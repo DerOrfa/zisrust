@@ -1,0 +1,12 @@
+[package]
+name = "zisrust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+uuid = "1.1.2"
+memmap = "0.7.0"
+xmltree = "0.10.3"
+ndarray = "0.15.6"
