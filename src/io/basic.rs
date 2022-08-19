@@ -1,12 +1,12 @@
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
-use std::io::{Read,Seek};
+use std::io::{Read,Seek,Result};
 use std::time::Instant;
 use crate::io::FileGet;
 use super::{FileRead, Endian};
 
 trait Integer{
-	fn swap_bytes(self) -> Self where Self:Sized;
+	fn swap_bytes(self) -> Self;
 }
 
 pub struct Cached<S,T>{
@@ -38,61 +38,61 @@ impl<S,T> Cached<S,T>{
 }
 
 impl<T:Read+Seek> FileGet<T> for T{
-	fn get<R: FileRead<T>>(&mut self, endianess: &Endian) -> R {
+	fn get<R: FileRead<T>>(&mut self, endianess: &Endian) -> Result<R> {
 		R::read(self,endianess)
 	}
-	fn get_utf8(&mut self, len: u64) -> String {
+	fn get_utf8(&mut self, len: u64) -> Result<String> {
 		let mut s=String::new();
-		self.take(len).read_to_string(&mut s).expect("Failed reading utf8 text");
-		s
+		self.take(len).read_to_string(&mut s)?;
+		Ok(s)
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for f32 {
-	fn read(file: &mut T, endianess: &Endian) -> Self {
-		f32::from_bits(u32::read(file,endianess))
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		Ok(f32::from_bits(u32::read(file,endianess)?))
 	}
 }
 impl<T: Read+Seek> FileRead<T> for f64 {
-	fn read(file: &mut T, endianess: &Endian) -> Self {
-		f64::from_bits(u64::read(file,endianess))
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		Ok(f64::from_bits(u64::read(file,endianess)?))
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for uuid::Uuid{
-	fn read(file: &mut T, _: &Endian) -> Self {
+	fn read(file: &mut T, _: &Endian) -> Result<Self> {
 		let mut id = [0;16];
-		file.read_exact(&mut id).expect("Failed to read");
-		uuid::Uuid::from_bytes(id)
+		file.read_exact(&mut id)?;
+		Ok(uuid::Uuid::from_bytes(id))
 	}
 }
 
 impl<const N:usize,T: Read+Seek> FileRead<T> for [u8;N] {
-	fn read(file: &mut T, _: &Endian) -> Self where Self: Sized {
+	fn read(file: &mut T, _: &Endian) -> Result<Self> {
 		let mut ret=[0;N];
-		file.read_exact(&mut ret).expect("Failed to read");
-		ret
+		file.read_exact(&mut ret)?;
+		Ok(ret)
 	}
 }
 
 impl<const N:usize,T: Read+Seek> FileRead<T> for [char;N]{
-	fn read(file: &mut T, _: &Endian) -> [char;N] {
-		let buff:[u8;N]=file.get(&Endian::Little);
+	fn read(file: &mut T, _: &Endian) -> Result<[char;N]> {
+		let buff:[u8;N]=file.get(&Endian::Little)?;
 		let mut ret=['\0';N];
 		for i in 0..N{
 			ret[i]=buff[i].into();//no utf8 checking necessary as the lower 8bits we can possibly get are safe
 		}
-		ret
+		Ok(ret)
 	}
 }
 
 impl<I: Integer+Default,T: Read+Seek> FileRead<T> for I {
-	fn read(file: &mut T, endianess: &Endian) -> Self where Self: Sized{
-		let ret:Self=raw_read(file);
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self>{
+		let ret:Result<Self>=raw_read(file);
 		#[cfg(target_endian = "little")]
 		{
 			match endianess {
-				Endian::Big => ret.swap_bytes(),
+				Endian::Big => Ok(ret?.swap_bytes()),
 				Endian::Little => ret
 			}
 		}
@@ -106,31 +106,31 @@ impl<I: Integer+Default,T: Read+Seek> FileRead<T> for I {
 	}
 }
 impl Integer for u16{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for i16{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for u32{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for i32{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for u64{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for i64{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for u128{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 impl Integer for i128{
-	fn swap_bytes(self) -> Self where Self: Sized {self.swap_bytes()}
+	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 
-fn raw_read<T: Read+Seek,R: Default+Integer>(file: &mut T) -> R {
+fn raw_read<T: Read+Seek,R: Default+Integer>(file: &mut T) -> Result<R> {
 	let mut ret: R = R::default();
 
 	// scary pointer trickery
@@ -138,6 +138,6 @@ fn raw_read<T: Read+Seek,R: Default+Integer>(file: &mut T) -> R {
 	let buff:&mut [u8]=
 		unsafe {std::slice::from_raw_parts_mut(ptr as *mut u8, size_of::<R>())};
 	// ok buff should occupy exactly the same mem as ret, so loading into it, should load into ret
-	file.read_exact(buff).expect("Failed to read file");
-	ret
+	file.read_exact(buff)?;
+	Ok(ret)
 }

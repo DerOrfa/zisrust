@@ -11,7 +11,7 @@ use crate::io::basic::Cached;
 
 pub fn get_file_header(file:&mut BufReader<File>) -> Result<FileHeader>{
 	file.seek(SeekFrom::Start(0))?;
-	let s:Segment = file.get(&Endian::Little);
+	let s:Segment = file.get(&Endian::Little)?;
 	match s.block {
 		SegmentBlock::FileHeader(hd) => Ok(hd),
 		_ => Err(Error::new(ErrorKind::InvalidInput,"Unexpected block when looking for header"))

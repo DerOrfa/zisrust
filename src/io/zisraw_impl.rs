@@ -54,163 +54,163 @@ impl Segment{
 }
 
 impl FileRead<BufReader<File>> for Segment{
-	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Self {
-		let pos = file.stream_position().expect("Read failed");
-		let id=file.get_ascii::<16>();
-		let allocated_size = file.get(endianess);
-		let used_size = file.get(endianess);
+	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Result<Self> {
+		let pos = file.stream_position()?;
+		let id=file.get_ascii::<16>()?;
+		let allocated_size = file.get(endianess)?;
+		let used_size = file.get(endianess)?;
 
 		let s = Segment{
 			pos, allocated_size,
 			used_size: {if used_size==0 {allocated_size} else {used_size}},
 			block: match id.as_str() {
-				"ZISRAWFILE" => SegmentBlock::FileHeader(file.get(endianess)),
-				"ZISRAWATTDIR" => SegmentBlock::AttachmentDirectory(file.get(endianess)),
-				"ZISRAWMETADATA" => SegmentBlock::Metadata(file.get(endianess)),
-				"ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(file.get(endianess)),
-				"ZISRAWDIRECTORY" => SegmentBlock::Directory(file.get(endianess)),
-				"ZISRAWATTACH" => SegmentBlock::Attachment(file.get(endianess)),
+				"ZISRAWFILE" => SegmentBlock::FileHeader(file.get(endianess)?),
+				"ZISRAWATTDIR" => SegmentBlock::AttachmentDirectory(file.get(endianess)?),
+				"ZISRAWMETADATA" => SegmentBlock::Metadata(file.get(endianess)?),
+				"ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(file.get(endianess)?),
+				"ZISRAWDIRECTORY" => SegmentBlock::Directory(file.get(endianess)?),
+				"ZISRAWATTACH" => SegmentBlock::Attachment(file.get(endianess)?),
 				_ => SegmentBlock::DELETED
 			}
 		};
-		s.skip_to_end(file).expect("Failed to skip");
-		if s.used_size==0 {Segment{used_size:s.allocated_size,..s}}//is used_size is use allocated_size
-		else {s}
+		s.skip_to_end(file)?;
+		if s.used_size==0 {Ok(Segment{used_size:s.allocated_size,..s})}//is used_size is use allocated_size
+		else {Ok(s)}
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for FileHeader{
-	fn read(file: &mut T, endianess: &Endian) -> Self where Self: Sized {
-		FileHeader{
-			version: [file.get(endianess),file.get(endianess)],
-			Reserved1: file.get(endianess),
-			Reserved2: file.get(endianess),
-			PrimaryFileGuid: file.get(endianess),
-			FileGuid: file.get(endianess),
-			FilePart: file.get(endianess),
-			DirectoryPosition: file.get(endianess),
-			MetadataPosition: file.get(endianess),
-			UpdatePending: i32::read(file,endianess)!=0,
-			AttachmentDirectoryPosition: file.get(endianess)
-		}
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		Ok(FileHeader{
+			version: [file.get(endianess)?,file.get(endianess)?],
+			Reserved1: file.get(endianess)?,
+			Reserved2: file.get(endianess)?,
+			PrimaryFileGuid: file.get(endianess)?,
+			FileGuid: file.get(endianess)?,
+			FilePart: file.get(endianess)?,
+			DirectoryPosition: file.get(endianess)?,
+			MetadataPosition: file.get(endianess)?,
+			UpdatePending: i32::read(file,endianess)?!=0,
+			AttachmentDirectoryPosition: file.get(endianess)?
+		})
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for AttachmentDirectory{
-	fn read(file: &mut T, endianess: &Endian) -> Self {
-		let EntryCount:i32 = file.get(endianess);
-		skip(file, 252).expect("Failed skip");
-		AttachmentDirectory{
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		let EntryCount:i32 = file.get(endianess)?;
+		skip(file, 252)?;
+		Ok(AttachmentDirectory{
 			EntryCount,
-			Entries: file.get_vec(EntryCount as usize,endianess)
-		}
+			Entries: file.get_vec(EntryCount as usize,endianess)?
+		})
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for AttachmentEntryA1{
-	fn read(file: &mut T, endianess: &Endian) -> Self {
-		AttachmentEntryA1{
-			SchemaType: file.get_ascii::<2>(),
-			Reserved: file.get(endianess),
-			FilePosition: file.get(endianess),
-			FilePart: file.get(endianess),
-			ContentGuid: file.get(endianess),
-			ContentFileType: file.get_ascii::<8>(),
-			Name: file.get_ascii::<80>()
-		}
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		Ok(AttachmentEntryA1{
+			SchemaType: file.get_ascii::<2>()?,
+			Reserved: file.get(endianess)?,
+			FilePosition: file.get(endianess)?,
+			FilePart: file.get(endianess)?,
+			ContentGuid: file.get(endianess)?,
+			ContentFileType: file.get_ascii::<8>()?,
+			Name: file.get_ascii::<80>()?
+		})
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for Metadata{
-	fn read(file: &mut T, endianess: &Endian) -> Self {
-		let XmlSize:i32= file.get(endianess);
-		let AttachmentSize:i32= file.get(endianess);
-		skip(file,256-8).expect("Skip failed");
-		let xml_string=file.get_utf8(XmlSize as u64);
-		Metadata{
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		let XmlSize:i32= file.get(endianess)?;
+		let AttachmentSize:i32= file.get(endianess)?;
+		skip(file,256-8)?;
+		let xml_string=file.get_utf8(XmlSize as u64)?;
+		Ok(Metadata{
 			XmlSize,
 			AttachmentSize,
 			xml_string:xml_string.clone(),
 			cache: Cached::new(xml_string, parse)
-		}
+		})
 	}
 }
 
 impl FileRead<BufReader<File>> for SubBlock{
-	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Self {
-		let skip_to=file.stream_position().unwrap()+256;
-		let MetadataSize = file.get(endianess);
-		let AttachmentSize= file.get(endianess);
-		let DataSize = file.get(endianess);
-		let Entry = file.get(endianess);
-		let current_pos= file.stream_position().unwrap();
-		if skip_to>current_pos{skip(file,skip_to-current_pos).expect("Skip failed");}
+	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Result<Self> {
+		let skip_to=file.stream_position()?+256;
+		let MetadataSize = file.get(endianess)?;
+		let AttachmentSize= file.get(endianess)?;
+		let DataSize = file.get(endianess)?;
+		let Entry = file.get(endianess)?;
+		let current_pos= file.stream_position()?;
+		if skip_to>current_pos{skip(file,skip_to-current_pos)?;}
 
-		SubBlock{
+		Ok(SubBlock{
 			MetadataSize, AttachmentSize, DataSize,	Entry,
-			Metadata:file.get_utf8(MetadataSize as u64),
+			Metadata:file.get_utf8(MetadataSize as u64)?,
 			Data: Data::new(file,DataSize as usize)
-		}
+		})
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for DirectoryEntryDV{
-	fn read(file: &mut T, endianess: &Endian) -> Self {
-		let SchemaType= file.get_ascii::<2>();
-		let PixelType = file.get(endianess);
-		let FilePosition = file.get(endianess);
-		let FilePart = file.get(endianess);
-		let Compression = file.get(endianess);
-		let buffer:[u8;6] = file.get(endianess);
-		let DimensionCount = file.get(endianess);
-		DirectoryEntryDV{
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		let SchemaType= file.get_ascii::<2>()?;
+		let PixelType = file.get(endianess)?;
+		let FilePosition = file.get(endianess)?;
+		let FilePart = file.get(endianess)?;
+		let Compression = file.get(endianess)?;
+		let buffer:[u8;6] = file.get(endianess)?;
+		let DimensionCount = file.get(endianess)?;
+		Ok(DirectoryEntryDV{
 			SchemaType,	PixelType, FilePosition, FilePart, Compression,
 			PyramidType:buffer[0],
 			DimensionCount,
-			DimensionEntries: file.get_vec(DimensionCount as usize,endianess)
-		}
+			DimensionEntries: file.get_vec(DimensionCount as usize,endianess)?
+		})
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for DimensionEntryDV1{
-	fn read(file: &mut T, endianess: &Endian) -> Self where Self: Sized {
-		DimensionEntryDV1{
-			Dimension: file.get_ascii::<4>(),
-			Start: file.get(endianess),
-			Size: file.get(endianess),
-			StartCoordinate: file.get(endianess),
-			StoredSize: file.get(endianess)
-		}
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		Ok(DimensionEntryDV1{
+			Dimension: file.get_ascii::<4>()?,
+			Start: file.get(endianess)?,
+			Size: file.get(endianess)?,
+			StartCoordinate: file.get(endianess)?,
+			StoredSize: file.get(endianess)?
+		})
 	}
 }
 
 impl<T: Read+Seek> FileRead<T> for Directory{
-	fn read(file: &mut T, endianess: &Endian) -> Self where Self: Sized {
-		let EntryCount = file.get(endianess);
-		Directory{
+	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
+		let EntryCount = file.get(endianess)?;
+		Ok(Directory{
 			EntryCount,
-			Reserved: file.get(endianess),
-			Entries: file.get_vec(EntryCount as usize,endianess)
-		}
+			Reserved: file.get(endianess)?,
+			Entries: file.get_vec(EntryCount as usize,endianess)?
+		})
 	}
 }
 
 impl FileRead<BufReader<File>> for Attachment{
-	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Self where Self: Sized {
-		let DataSize = file.get(endianess);
-		skip(file,12);
-		let Entry = file.get(endianess);
-		skip(file,112);
+	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Result<Self> {
+		let DataSize = file.get(endianess)?;
+		skip(file,12)?;
+		let Entry = file.get(endianess)?;
+		skip(file,112)?;
 		let Data = Data::new(file,DataSize as usize);
 
-		Attachment{DataSize,Entry,Data}
+		Ok(Attachment{DataSize,Entry,Data})
 	}
 }
 
 impl FileHeader{
 	pub fn get_directory(&self,file:&mut BufReader<File>) -> Result<Directory>{
 		file.seek(SeekFrom::Start(self.DirectoryPosition))?;
-		let s:Segment = file.get(&Endian::Little);
+		let s:Segment = file.get(&Endian::Little)?;
 		match s.block {
 			SegmentBlock::Directory(d) => Ok(d),
 			_ => Err(Error::new(ErrorKind::InvalidInput,"Unexpected block when looking for directory"))
@@ -218,7 +218,7 @@ impl FileHeader{
 	}
 	fn get_metadata(&self,file:&mut BufReader<File>) -> Result<Metadata>{
 		file.seek(SeekFrom::Start(self.MetadataPosition))?;
-		let mut s:Segment = file.get(&Endian::Little);
+		let mut s:Segment = file.get(&Endian::Little)?;
 		match s.block {
 			SegmentBlock::Metadata(d) => Ok(d),
 			_ => Err(Error::new(ErrorKind::InvalidInput,"Unexpected block when looking for metadata"))
@@ -232,8 +232,8 @@ impl FileHeader{
 		let e = self.get_metadata(file)?;
 		Ok(e.cache.source.clone())
 	}
-	pub fn get_pyramid(&self,file:&mut BufReader<File>){
-		let entries=self.get_directory(file).expect("Failed to read header").Entries;
+	pub fn get_pyramid(&self,file:&mut BufReader<File>)-> Result<()>{
+		let entries=self.get_directory(file)?.Entries;
 		for e in entries{
 			if e.PyramidType == 0 { //not a pyramid actually
 
@@ -241,6 +241,7 @@ impl FileHeader{
 				let scale = e.DimensionEntries[0].Size as f32 / e.DimensionEntries[0].StoredSize as f32;
 			}
 		}
+		Ok(())
 	}
 
 }
