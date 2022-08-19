@@ -28,8 +28,6 @@ pub struct Segment{
 
 #[derive(Debug)]
 pub struct Data{
-	pub size:usize,
-	pub pos:u64,
 	pub cache: Cached<Mmap,Vec<u8>>
 }
 
@@ -76,21 +74,17 @@ pub struct Directory{
 
 #[derive(Debug)]
 pub struct Metadata{
-	pub XmlSize:i32,
-	pub AttachmentSize:i32,
-	pub xml_string:String,
+	//pub AttachmentSize:i32, //NOT USED CURRENTLY
 	pub cache:Cached<String,Element>
 }
 
 #[derive(Debug)]
 pub struct AttachmentDirectory{
-	pub EntryCount:i32,
 	pub Entries:Vec<AttachmentEntryA1>
 }
 
 #[derive(Debug)]
 pub struct Attachment{
-	pub DataSize:i32,
 	pub Entry:AttachmentEntryA1,
 	pub Data:Data
 }
@@ -108,12 +102,10 @@ pub struct AttachmentEntryA1{
 
 #[derive(Debug)]
 pub struct SubBlock {
-	pub MetadataSize:i32,
-	pub AttachmentSize:i32,
-	pub DataSize:i64,
 	pub Entry:DirectoryEntryDV,
-	pub Metadata: String,
-	pub(crate) Data:Data
+	pub Metadata: Cached<String,Element>,
+	pub Data:Data,
+	pub Attachment:Option<Data>
 }
 
 #[derive(Debug)]
@@ -124,7 +116,6 @@ pub struct DirectoryEntryDV{
 	pub FilePart:i32,
 	pub Compression:i32,
 	pub PyramidType:u8,
-	pub DimensionCount:i32,
 	pub DimensionEntries:Vec<DimensionEntryDV1>,
 }
 

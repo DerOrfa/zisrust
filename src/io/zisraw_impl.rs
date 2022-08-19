@@ -3,7 +3,7 @@
 use std::fs::File;
 use super::{FileRead, FileGet, Endian};
 use super::zisraw::*;
-use std::io::{Read, Seek, SeekFrom, ErrorKind, Error, Result, BufReader};
+use std::io::{Read, Seek, SeekFrom, ErrorKind::InvalidInput, Error, Result, BufReader};
 use crate::io::basic::Cached;
 use memmap::{Mmap, MmapOptions};
 use xmltree::Element;
@@ -17,29 +17,30 @@ fn skip<T:Read+Seek>(file:&mut T, bytes:u64)-> Result<u64>{
 }
 
 impl Data {
-	pub fn new(file:&mut BufReader<File>,size:usize)->Data{
-		let pos= file.stream_position().unwrap();
+	pub fn new(file:&mut BufReader<File>,size:usize)->Result<Data>{
+		let pos= file.stream_position()?;
 		let mmap = unsafe{
 			MmapOptions::new()
 				.offset(pos)
 				.len(size)
 				.map(file.get_ref())
-		};
-		Data{
-			size,pos,
-			cache: Cached::new(mmap.unwrap(),Self::produce)
-		}
+		}?;
+		file.seek_relative(size as i64)?;//simulate consumption of the data
+		Ok(Data{
+			cache: Cached::new(mmap,Self::produce)
+		})
 	}
 	fn produce(source:&Mmap)->Vec<u8>{
 		source.to_vec()
 	}
 }
-pub fn parse(source:&String)->Element{
+
+pub fn parse_xml(source:&String) ->Element{
 	Element::parse(source.as_bytes()).unwrap()
 }
 
 impl Segment{
-	fn skip_to_start<T:Read+Seek>(&self, file: &mut T,offset:u64)->std::io::Result<u64>{
+	fn skip_to_start<T:Read+Seek>(&self, file: &mut T,offset:u64)->Result<u64>{
 		let to = self.pos+32+offset;//allocated_size starts after the segment header which is 32bytes
 		let current= file.stream_position()?;
 		if to < current {
@@ -48,7 +49,7 @@ impl Segment{
 			skip(file, to - current)
 		}
 	}
-	fn skip_to_end<T:Read+Seek>(&self, file: &mut T) -> std::io::Result<u64>{
+	fn skip_to_end<T:Read+Seek>(&self, file: &mut T) -> Result<u64>{
 		self.skip_to_start(file,self.allocated_size)
 	}
 }
@@ -56,7 +57,7 @@ impl Segment{
 impl FileRead<BufReader<File>> for Segment{
 	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Result<Self> {
 		let pos = file.stream_position()?;
-		let id=file.get_ascii::<16>()?;
+		let id= file.get_ascii::<16>()?;
 		let allocated_size = file.get(endianess)?;
 		let used_size = file.get(endianess)?;
 
@@ -98,11 +99,10 @@ impl<T: Read+Seek> FileRead<T> for FileHeader{
 
 impl<T: Read+Seek> FileRead<T> for AttachmentDirectory{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
-		let EntryCount:i32 = file.get(endianess)?;
+		let count:u32 = file.get(endianess)?;
 		skip(file, 252)?;
 		Ok(AttachmentDirectory{
-			EntryCount,
-			Entries: file.get_vec(EntryCount as usize,endianess)?
+			Entries: file.get_vec(count as usize,endianess)?
 		})
 	}
 }
@@ -123,15 +123,11 @@ impl<T: Read+Seek> FileRead<T> for AttachmentEntryA1{
 
 impl<T: Read+Seek> FileRead<T> for Metadata{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
-		let XmlSize:i32= file.get(endianess)?;
-		let AttachmentSize:i32= file.get(endianess)?;
-		skip(file,256-8)?;
-		let xml_string=file.get_utf8(XmlSize as u64)?;
+		let xml_size:i32= file.get(endianess)?;
+		skip(file,256-4)?;//actually there is also 4 bytes reserved for AttachmentSize, but that's "NOT USED CURRENTLY"
+		let xml_string=file.get_utf8(xml_size as u64)?;
 		Ok(Metadata{
-			XmlSize,
-			AttachmentSize,
-			xml_string:xml_string.clone(),
-			cache: Cached::new(xml_string, parse)
+			cache: Cached::new(xml_string, parse_xml)
 		})
 	}
 }
@@ -139,18 +135,18 @@ impl<T: Read+Seek> FileRead<T> for Metadata{
 impl FileRead<BufReader<File>> for SubBlock{
 	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Result<Self> {
 		let skip_to=file.stream_position()?+256;
-		let MetadataSize = file.get(endianess)?;
-		let AttachmentSize= file.get(endianess)?;
-		let DataSize = file.get(endianess)?;
+		let metadata_size:u32 = file.get(endianess)?;
+		let attachment_size:u32= file.get(endianess)?;
+		let data_size:u64 = file.get(endianess)?;
 		let Entry = file.get(endianess)?;
 		let current_pos= file.stream_position()?;
 		if skip_to>current_pos{skip(file,skip_to-current_pos)?;}
 
-		Ok(SubBlock{
-			MetadataSize, AttachmentSize, DataSize,	Entry,
-			Metadata:file.get_utf8(MetadataSize as u64)?,
-			Data: Data::new(file,DataSize as usize)
-		})
+		let metadata_xml = file.get_utf8(metadata_size as u64)?;
+		let Metadata = Cached::new(metadata_xml, parse_xml);
+		let Data = Data::new(file,data_size as usize)?;
+		let Attachment:Option<Data> = if attachment_size>0 {Some(Data::new(file,attachment_size as usize)?)} else {None};
+		Ok(SubBlock{Entry,Metadata,	Data, Attachment,})
 	}
 }
 
@@ -162,12 +158,11 @@ impl<T: Read+Seek> FileRead<T> for DirectoryEntryDV{
 		let FilePart = file.get(endianess)?;
 		let Compression = file.get(endianess)?;
 		let buffer:[u8;6] = file.get(endianess)?;
-		let DimensionCount = file.get(endianess)?;
+		let dimension_count:u32 = file.get(endianess)?;
 		Ok(DirectoryEntryDV{
 			SchemaType,	PixelType, FilePosition, FilePart, Compression,
 			PyramidType:buffer[0],
-			DimensionCount,
-			DimensionEntries: file.get_vec(DimensionCount as usize,endianess)?
+			DimensionEntries: file.get_vec(dimension_count as usize,endianess)?
 		})
 	}
 }
@@ -197,13 +192,13 @@ impl<T: Read+Seek> FileRead<T> for Directory{
 
 impl FileRead<BufReader<File>> for Attachment{
 	fn read(file: &mut BufReader<File>, endianess: &Endian) -> Result<Self> {
-		let DataSize = file.get(endianess)?;
+		let size:u32 = file.get(endianess)?;
 		skip(file,12)?;
 		let Entry = file.get(endianess)?;
 		skip(file,112)?;
-		let Data = Data::new(file,DataSize as usize);
+		let Data = Data::new(file,size as usize)?;
 
-		Ok(Attachment{DataSize,Entry,Data})
+		Ok(Attachment{Entry,Data})
 	}
 }
 
@@ -213,15 +208,15 @@ impl FileHeader{
 		let s:Segment = file.get(&Endian::Little)?;
 		match s.block {
 			SegmentBlock::Directory(d) => Ok(d),
-			_ => Err(Error::new(ErrorKind::InvalidInput,"Unexpected block when looking for directory"))
+			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for directory"))
 		}
 	}
 	fn get_metadata(&self,file:&mut BufReader<File>) -> Result<Metadata>{
 		file.seek(SeekFrom::Start(self.MetadataPosition))?;
-		let mut s:Segment = file.get(&Endian::Little)?;
+		let s:Segment = file.get(&Endian::Little)?;
 		match s.block {
 			SegmentBlock::Metadata(d) => Ok(d),
-			_ => Err(Error::new(ErrorKind::InvalidInput,"Unexpected block when looking for metadata"))
+			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for metadata"))
 		}
 	}
 	pub fn get_metadata_element(&self,file:&mut BufReader<File>) -> Result<Element>{
