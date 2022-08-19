@@ -1,23 +1,22 @@
 #![allow(non_snake_case)]
 
 use std::fs::File;
-use super::{FileRead, FileGet, Endian};
-use super::zisraw::*;
+use crate::io::{FileRead, FileGet, Endian, basic::Cached};
+use crate::io::zisraw::zisraw_structs::*;
 use std::io::{Read, Seek, SeekFrom, ErrorKind::InvalidInput, Error, Result, BufReader};
-use crate::io::basic::Cached;
 use memmap::{Mmap, MmapOptions};
 use xmltree::Element;
 
-fn skip<T:Read+Seek>(file:&mut T, bytes:u64)-> Result<u64>{
+fn skip<T:Read+Seek>(file:&mut T, bytes:u64)-> std::io::Result<u64>{
 	if bytes > 3 * 1024 {
 		file.seek(SeekFrom::Current(bytes as i64))
 	} else {
-		std::io::copy(&mut file.by_ref().take(bytes as u64), &mut std::io::sink())
+		std::io::copy(&mut file.by_ref().take(bytes), &mut std::io::sink())
 	}
 }
 
 impl Data {
-	pub fn new(file:&mut BufReader<File>,size:usize)->Result<Data>{
+	pub fn new(file:&mut BufReader<File>,size:usize)->std::io::Result<Data>{
 		let pos= file.stream_position()?;
 		let mmap = unsafe{
 			MmapOptions::new()
@@ -238,5 +237,4 @@ impl FileHeader{
 		}
 		Ok(())
 	}
-
 }

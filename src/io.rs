@@ -1,7 +1,6 @@
-use std::io::{Read, Seek,Result};
+use std::io::{Read, Result, Seek};
 
 mod basic;
-mod zisraw_impl;
 pub mod zisraw;
 
 pub enum Endian{Big,Little}

@@ -2,18 +2,18 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader};
 //use zisrust::io::{Endian, FileGet, FileRead};
-use zisrust::io::zisraw;
+use zisrust::io::zisraw::get_file_header;
 
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let mut file=BufReader::new(
 		File::open("/Users/enrico/ownCloud.gwdg/czi_example/2021_12_02__0243.czi")?
 	);
-	let hd= zisraw::get_file_header(&mut file)?;
+	let hd= get_file_header(&mut file)?;
 	let d= hd.get_directory(&mut file)?;
 //	eprintln!("{:#?}",d.Entries);
 	println!("{} blocks found", d.Entries.len());
-	println!("{}",hd.get_metadata_xml(&mut file)?);
+	println!("{:?}",hd.get_metadata_element(&mut file)?);
 	// let s = Segment::read(&mut file,&Endian::Little);
 	// match s.block {
 	// 	SegmentBlock::FileHeader(hd) => {
