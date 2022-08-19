@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader};
 //use zisrust::io::{Endian, FileGet, FileRead};
-use zisrust::io::zisraw::get_file_header;
+use zisrust::io::zisraw::{get_file_header,ZisrawInterface};
 
 
 fn main() -> Result<(), Box<dyn Error>> {

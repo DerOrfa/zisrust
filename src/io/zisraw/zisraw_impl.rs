@@ -6,6 +6,7 @@ use crate::io::zisraw::zisraw_structs::*;
 use std::io::{Read, Seek, SeekFrom, ErrorKind::InvalidInput, Error, Result, BufReader};
 use memmap::{Mmap, MmapOptions};
 use xmltree::Element;
+use crate::io::zisraw::ZisrawInterface;
 
 fn skip<T:Read+Seek>(file:&mut T, bytes:u64)-> std::io::Result<u64>{
 	if bytes > 3 * 1024 {
@@ -201,15 +202,7 @@ impl FileRead<BufReader<File>> for Attachment{
 	}
 }
 
-impl FileHeader{
-	pub fn get_directory(&self,file:&mut BufReader<File>) -> Result<Directory>{
-		file.seek(SeekFrom::Start(self.DirectoryPosition))?;
-		let s:Segment = file.get(&Endian::Little)?;
-		match s.block {
-			SegmentBlock::Directory(d) => Ok(d),
-			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for directory"))
-		}
-	}
+impl ZisrawInterface for FileHeader{
 	fn get_metadata(&self,file:&mut BufReader<File>) -> Result<Metadata>{
 		file.seek(SeekFrom::Start(self.MetadataPosition))?;
 		let s:Segment = file.get(&Endian::Little)?;
@@ -218,23 +211,12 @@ impl FileHeader{
 			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for metadata"))
 		}
 	}
-	pub fn get_metadata_element(&self,file:&mut BufReader<File>) -> Result<Element>{
-		let mut cache = self.get_metadata(file)?.cache;
-		Ok(cache.get().clone())
-	}
-	pub fn get_metadata_xml(&self,file:&mut BufReader<File>) -> Result<String>{
-		let e = self.get_metadata(file)?;
-		Ok(e.cache.source.clone())
-	}
-	pub fn get_pyramid(&self,file:&mut BufReader<File>)-> Result<()>{
-		let entries=self.get_directory(file)?.Entries;
-		for e in entries{
-			if e.PyramidType == 0 { //not a pyramid actually
-
-			} else {
-				let scale = e.DimensionEntries[0].Size as f32 / e.DimensionEntries[0].StoredSize as f32;
-			}
+	fn get_directory(&self,file:&mut BufReader<File>) -> Result<Directory>{
+		file.seek(SeekFrom::Start(self.DirectoryPosition))?;
+		let s:Segment = file.get(&Endian::Little)?;
+		match s.block {
+			SegmentBlock::Directory(d) => Ok(d),
+			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for directory"))
 		}
-		Ok(())
 	}
 }
