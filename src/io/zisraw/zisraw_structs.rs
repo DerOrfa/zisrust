@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use crate::io::Data;
 
 #[derive(Debug)]
 pub struct Segment{
@@ -6,11 +7,6 @@ pub struct Segment{
 	pub used_size:u64,
 	pub pos:u64,
 	pub block:SegmentBlock
-}
-
-#[derive(Debug)]
-pub struct Data{
-	pub cache: crate::io::basic::Cached<memmap::Mmap,Vec<u8>>
 }
 
 #[derive(Debug)]

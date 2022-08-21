@@ -1,4 +1,7 @@
-use std::io::{Read, Result, Seek};
+use std::io::{Read, Result, Seek, BufReader, Error};
+use crate::io::basic::Cached;
+use std::ffi::{CString,CStr};
+use std::io::ErrorKind::InvalidInput;
 
 mod basic;
 pub mod zisraw;
@@ -34,3 +37,25 @@ pub trait FileGet<T:Read+Seek> {
 	}
 }
 
+#[derive(Debug)]
+pub struct Data{
+	cache: Cached<memmap::Mmap,Vec<u8>>
+}
+impl Data {
+	pub fn new(file:&mut BufReader<std::fs::File>,size:usize)->Result<Data>{
+		let pos= file.stream_position()?;
+		let mmap = unsafe{
+			memmap::MmapOptions::new()
+				.offset(pos)
+				.len(size)
+				.map(file.get_ref())
+		}?;
+		file.seek_relative(size as i64)?;//simulate consumption of the data
+		Ok(Data{
+			cache: basic::Cached::new(mmap,Self::produce)
+		})
+	}
+	fn produce(source:&memmap::Mmap)->Vec<u8>{
+		source.to_vec()
+	}
+}

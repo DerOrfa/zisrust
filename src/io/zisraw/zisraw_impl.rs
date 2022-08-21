@@ -1,10 +1,9 @@
 #![allow(non_snake_case)]
 
 use std::fs::File;
-use crate::io::{FileRead, FileGet, Endian, basic::Cached};
+use crate::io::{FileRead, FileGet, Endian, Data, basic::Cached};
 use crate::io::zisraw::zisraw_structs::*;
-use std::io::{Read, Seek, SeekFrom, ErrorKind::InvalidInput, Error, Result, BufReader};
-use memmap::{Mmap, MmapOptions};
+use std::io::{Read, Seek, SeekFrom, ErrorKind::InvalidData, Error, Result, BufReader};
 use xmltree::Element;
 use crate::io::zisraw::ZisrawInterface;
 
@@ -13,25 +12,6 @@ fn skip<T:Read+Seek>(file:&mut T, bytes:u64)-> std::io::Result<u64>{
 		file.seek(SeekFrom::Current(bytes as i64))
 	} else {
 		std::io::copy(&mut file.by_ref().take(bytes), &mut std::io::sink())
-	}
-}
-
-impl Data {
-	pub fn new(file:&mut BufReader<File>,size:usize)->std::io::Result<Data>{
-		let pos= file.stream_position()?;
-		let mmap = unsafe{
-			MmapOptions::new()
-				.offset(pos)
-				.len(size)
-				.map(file.get_ref())
-		}?;
-		file.seek_relative(size as i64)?;//simulate consumption of the data
-		Ok(Data{
-			cache: Cached::new(mmap,Self::produce)
-		})
-	}
-	fn produce(source:&Mmap)->Vec<u8>{
-		source.to_vec()
 	}
 }
 
@@ -208,7 +188,7 @@ impl ZisrawInterface for FileHeader{
 		let s:Segment = file.get(&Endian::Little)?;
 		match s.block {
 			SegmentBlock::Metadata(d) => Ok(d),
-			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for metadata"))
+			_ => Err(Error::new(InvalidData,"Unexpected block when looking for metadata"))
 		}
 	}
 	fn get_directory(&self,file:&mut BufReader<File>) -> Result<Directory>{
@@ -216,7 +196,7 @@ impl ZisrawInterface for FileHeader{
 		let s:Segment = file.get(&Endian::Little)?;
 		match s.block {
 			SegmentBlock::Directory(d) => Ok(d),
-			_ => Err(Error::new(InvalidInput,"Unexpected block when looking for directory"))
+			_ => Err(Error::new(InvalidData,"Unexpected block when looking for directory"))
 		}
 	}
 }
