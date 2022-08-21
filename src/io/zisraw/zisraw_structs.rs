@@ -74,7 +74,7 @@ pub struct Attachment{
 #[derive(Debug)]
 pub struct AttachmentEntryA1{
 	pub SchemaType:String, //rad as [char;2]
-	pub Reserved:[char;10],
+	pub Reserved:[u8;10],
 	pub FilePosition:i64,
 	pub FilePart:i32,
 	pub ContentGuid:Uuid,

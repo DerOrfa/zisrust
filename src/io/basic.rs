@@ -61,8 +61,7 @@ impl<T: Read+Seek> FileRead<T> for f64 {
 
 impl<T: Read+Seek> FileRead<T> for uuid::Uuid{
 	fn read(file: &mut T, _: &Endian) -> Result<Self> {
-		let mut id = [0;16];
-		file.read_exact(&mut id)?;
+		let id:[u8;16] = file.get(&Endian::Little)?;
 		Ok(uuid::Uuid::from_bytes(id))
 	}
 }
@@ -71,17 +70,6 @@ impl<const N:usize,T: Read+Seek> FileRead<T> for [u8;N] {
 	fn read(file: &mut T, _: &Endian) -> Result<Self> {
 		let mut ret=[0;N];
 		file.read_exact(&mut ret)?;
-		Ok(ret)
-	}
-}
-
-impl<const N:usize,T: Read+Seek> FileRead<T> for [char;N]{
-	fn read(file: &mut T, _: &Endian) -> Result<[char;N]> {
-		let buff:[u8;N]=file.get(&Endian::Little)?;
-		let mut ret=['\0';N];
-		for i in 0..N{
-			ret[i]=buff[i].into();//no utf8 checking necessary as the lower 8bits we can possibly get are safe
-		}
 		Ok(ret)
 	}
 }
