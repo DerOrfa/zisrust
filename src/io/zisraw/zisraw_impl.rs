@@ -161,10 +161,9 @@ impl<T: Read+Seek> FileRead<T> for DimensionEntryDV1{
 
 impl<T: Read+Seek> FileRead<T> for Directory{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
-		let EntryCount = file.get(endianess)?;
+		let EntryCount:i32 = file.get(endianess)?;
+		skip(file,124)?;
 		Ok(Directory{
-			EntryCount,
-			Reserved: file.get(endianess)?,
 			Entries: file.get_vec(EntryCount as usize,endianess)?
 		})
 	}

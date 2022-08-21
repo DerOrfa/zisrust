@@ -11,16 +11,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 	);
 	let hd= get_file_header(&mut file)?;
 	let d= hd.get_directory(&mut file)?;
-//	eprintln!("{:#?}",d.Entries);
 	println!("{} blocks found", d.Entries.len());
-	println!("{:?}",hd.get_metadata_element(&mut file)?);
+
+	let p=hd.get_pyramid(&mut file);
+	println!("{p:#?}");
+
 	// let s = Segment::read(&mut file,&Endian::Little);
 	// match s.block {
 	// 	SegmentBlock::FileHeader(hd) => {
 	// 		file.seek(SeekFrom::Start(hd.DirectoryPosition as u64))?;
 	// 		Ok(())
 	// 	}
-	// 	_ => Err(Box::new(std::io::Error::new(ErrorKind::InvalidInput,"Unexpected block when looking for header")))
+	// 	_ => Err(Box::new(std::io::Error::new(ErrorKind::InvalidData,"Unexpected block when looking for header")))
 	// }
 	Ok(())
 }

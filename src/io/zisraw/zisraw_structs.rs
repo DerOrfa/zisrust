@@ -45,8 +45,6 @@ pub struct FileHeader{
 
 #[derive(Debug)]
 pub struct Directory{
-	pub EntryCount:i32,
-	pub Reserved:[u8;124],
 	pub Entries:Vec<DirectoryEntryDV>
 }
 
@@ -90,12 +88,13 @@ pub struct SubBlock {
 pub struct DirectoryEntryDV{
 	pub SchemaType:String,//read as [char;4]
 	pub PixelType:i32,
-	pub FilePosition:i64,
+	pub FilePosition:u64,
 	pub FilePart:i32,
 	pub Compression:i32,
 	pub PyramidType:u8,
 	pub DimensionEntries:Vec<DimensionEntryDV1>,
 }
+
 
 #[derive(Debug)]
 pub struct DimensionEntryDV1{
