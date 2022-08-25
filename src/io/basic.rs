@@ -1,9 +1,7 @@
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
-use std::io::{Read, Seek, Result, ErrorKind};
-use std::str::FromStr;
+use std::io::{Read, Seek, Result};
 use std::time::Instant;
-use crate::io::basic::PixelType::{Bgr192ComplexFloat, Bgr24, Bgr48, Bgr96Float, Bgra32, Gray16, Gray32, Gray32Float, Gray64, Gray64ComplexFloat, Gray8};
 use crate::io::FileGet;
 use super::{FileRead, Endian};
 
@@ -11,37 +9,29 @@ trait Integer{
 	fn swap_bytes(self) -> Self;
 }
 
-#[derive(Debug)]
-pub enum PixelType{
-	Gray8, Gray16, Gray32, Gray64,
-	Bgr24, Bgr48, Bgra32,
-	Bgr96Float,
-	Gray32Float, Gray64ComplexFloat, Bgr192ComplexFloat
-}
-
-impl FromStr for PixelType{
-	type Err = std::io::Error;
-
-	fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-		Ok(match s {
-			"Gray8" => Gray8,
-			"Gray16" => Gray16,
-			"Gray32" => Gray32,
-			"Gray64" => Gray64,
-			"Bgr24" => Bgr24,
-			"Bgr48" => Bgr48,
-			"Bgra32" => Bgra32,
-			"Bgr96Float" => Bgr96Float,
-			"Gray32Float" => Gray32Float,
-			"Gray64ComplexFloat" => Gray64ComplexFloat,
-			"Bgr192ComplexFloat" => Bgr192ComplexFloat,
-			_ => return Err(std::io::Error::new(
-				ErrorKind::InvalidData,
-				"Failed to interpret {s} as a pixeltype"
-			))
-		})
-	}
-}
+// impl FromStr for PixelType{
+// 	type Err = std::io::Error;
+//
+// 	fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+// 		Ok(match s {
+// 			"Gray8" => Gray8,
+// 			"Gray16" => Gray16,
+// 			"Gray32" => Gray32,
+// 			"Gray64" => Gray64,
+// 			"Bgr24" => Bgr24,
+// 			"Bgr48" => Bgr48,
+// 			"Bgra32" => Bgra32,
+// 			"Bgr96Float" => Bgr96Float,
+// 			"Gray32Float" => Gray32Float,
+// 			"Gray64ComplexFloat" => Gray64ComplexFloat,
+// 			"Bgr192ComplexFloat" => Bgr192ComplexFloat,
+// 			_ => return Err(std::io::Error::new(
+// 				ErrorKind::InvalidData,
+// 				"Failed to interpret {s} as a pixeltype"
+// 			))
+// 		})
+// 	}
+// }
 
 pub struct Cached<S,T>{
 	store:Option<T>,

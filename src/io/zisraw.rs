@@ -3,13 +3,11 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Seek};
-use std::io::{Error, ErrorKind::InvalidData, Result, SeekFrom};
-use chrono::Local;
+use std::iter::Iterator;
+use std::io::{BufReader, Seek, Error, ErrorKind::InvalidData, Result, SeekFrom};
 use crate::io::{Endian, FileGet};
 use crate::utils::XmlUtil;
-use uom::si::f64::Length;
-use uom::si::length::meter;
+use uom::si::{f64::Length,length::meter};
 
 mod zisraw_impl;
 mod zisraw_structs;
@@ -24,20 +22,20 @@ pub fn get_file_header(file:&mut BufReader<File>) -> Result<zisraw_structs::File
 }
 
 #[derive(Debug)]
-struct Scene{
-	RegionId:String,
-	PyramidLayersCount:usize,
-	MinificationFactor:f32
+pub struct Scene{
+	pub RegionId:String,
+	pub PyramidLayersCount:usize,
+	pub MinificationFactor:i32
 }
 #[derive(Debug)]
 pub struct ImageInfo{
-	pixels:(u64,u64,u64),
-	pixel_size:HashMap<String,Length>,
-	pixel_type:crate::io::basic::PixelType,
-	acquisition_timestamp: Option<chrono::DateTime<Local>>,
-	acquisition_duration: Option<std::time::Duration>,
-	mosaic_tiles:Option<u64>,
-	scenes:Vec<Scene>
+	pub pixels:(u64,u64,u64),
+	pub pixel_size:HashMap<String,Length>,
+	pub pixel_type:String,
+	pub acquisition_timestamp: Option<chrono::DateTime<chrono::Local>>,
+	pub acquisition_duration: Option<std::time::Duration>,
+	pub mosaic_tiles:Option<u64>,
+	pub scenes:Vec<Scene>
 }
 
 pub trait ZisrawInterface{
@@ -100,18 +98,5 @@ pub trait ZisrawInterface{
 			}
 		}
 		Ok(info)
-	}
-	fn get_pyramid(&self,file:&mut BufReader<File>)-> Result<()>{
-		let entries=self.get_directory(file)?.Entries;
-		let info = self.get_image_info(file)?;
-
-		for e in entries{
-			if e.PyramidType == 0 { //base segment
-
-			} else {
-				let scale = e.DimensionEntries[0].Size as f32 / e.DimensionEntries[0].StoredSize as f32;
-			}
-		}
-		Ok(())
 	}
 }

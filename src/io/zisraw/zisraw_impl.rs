@@ -1,11 +1,12 @@
 #![allow(non_snake_case)]
-
 use std::fs::File;
 use crate::io::{FileRead, FileGet, Endian, Data, basic::Cached};
 use crate::io::zisraw::zisraw_structs::*;
 use std::io::{Read, Seek, SeekFrom, ErrorKind::InvalidData, Error, Result, BufReader};
+use euclid::Rect;
 use xmltree::Element;
-use crate::io::zisraw::ZisrawInterface;
+use crate::pyramid;
+use super::ZisrawInterface;
 
 fn skip<T:Read+Seek>(file:&mut T, bytes:u64)-> std::io::Result<u64>{
 	if bytes > 3 * 1024 {
@@ -139,11 +140,43 @@ impl<T: Read+Seek> FileRead<T> for DirectoryEntryDV{
 		let Compression = file.get(endianess)?;
 		let buffer:[u8;6] = file.get(endianess)?;
 		let dimension_count:u32 = file.get(endianess)?;
+		let DimensionEntries:Vec<DimensionEntryDV1> = file.get_vec(dimension_count as usize,endianess)?;
+		let map = DimensionEntries.into_iter().map(|de|(de.Dimension.clone(),de)).collect();
 		Ok(DirectoryEntryDV{
 			SchemaType,	PixelType, FilePosition, FilePart, Compression,
 			PyramidType:buffer[0],
-			DimensionEntries: file.get_vec(dimension_count as usize,endianess)?
+			dimension_map:map
 		})
+	}
+}
+
+impl pyramid::Tile for DirectoryEntryDV{
+	fn frame(&self) -> Rect<i32, pyramid::PixelSpace> {
+		euclid::rect(
+			self.dimension_map["X"].Start,
+			self.dimension_map["Y"].Start,
+			self.dimension_map["X"].Size as i32,
+			self.dimension_map["Y"].Size as i32
+		)
+	}
+
+	fn pixel(&self) -> pyramid::Pixel {
+		todo!()
+	}
+
+	fn level(&self, scaling: i32) -> usize {
+		if self.PyramidType > 0{
+			assert!(scaling >1);
+			let scale= self.dimension_map["X"].Size / self.dimension_map["X"].StoredSize;
+			// todo Use feature(int_log)
+			((scale as f32).log10() / (scaling as f32).log10()) as usize
+		} else {
+			0
+		}
+	}
+
+	fn ordering_id(&self) -> i32 {
+		self.dimension_map["M"].Start
 	}
 }
 
@@ -166,6 +199,25 @@ impl<T: Read+Seek> FileRead<T> for Directory{
 		Ok(Directory{
 			Entries: file.get_vec(EntryCount as usize,endianess)?
 		})
+	}
+}
+
+impl Directory {
+	pub fn take_tiles(&mut self, scene: i32) -> Vec<Box<dyn pyramid::Tile>>{
+		let mut ret:Vec<Box<dyn pyramid::Tile>>=Vec::with_capacity(self.Entries.len());
+		let mut i = 0;
+		while i < self.Entries.len() {
+			if self.Entries[i].dimension_map["S"].Start == scene {
+				ret.push(Box::new(self.Entries.remove(i)));
+			} else {
+				i += 1;
+			}
+		}
+		// todo Use drain_filter once available
+		// for t in self.Entries.drain_filter(|ed|ed.dimension_map["S"].Start == scene){
+		// 	ret.push(Box::new(t));
+		// }
+		ret
 	}
 }
 

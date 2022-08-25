@@ -67,13 +67,13 @@ pub struct Attachment{
 
 #[derive(Debug)]
 pub struct AttachmentEntryA1{
-	pub SchemaType:String, //rad as [char;2]
+	pub SchemaType:String, //4 bytes
 	pub Reserved:[u8;10],
 	pub FilePosition:i64,
 	pub FilePart:i32,
 	pub ContentGuid:Uuid,
-	pub ContentFileType:String, //read as [char;8]
-	pub Name:String //read as [char;80]
+	pub ContentFileType:String, //8 bytes
+	pub Name:String //80 bytes
 }
 
 #[derive(Debug)]
@@ -86,13 +86,13 @@ pub struct SubBlock {
 
 #[derive(Debug)]
 pub struct DirectoryEntryDV{
-	pub SchemaType:String,//read as [char;4]
+	pub SchemaType:String,//4 bytes
 	pub PixelType:i32,
 	pub FilePosition:u64,
 	pub FilePart:i32,
 	pub Compression:i32,
 	pub PyramidType:u8,
-	pub DimensionEntries:Vec<DimensionEntryDV1>,
+	pub dimension_map:std::collections::HashMap<String,DimensionEntryDV1>,
 }
 
 
@@ -102,5 +102,5 @@ pub struct DimensionEntryDV1{
 	pub Start:i32,
 	pub Size:u32,
 	pub StartCoordinate:f32,
-	pub StoredSize:i32
+	pub StoredSize:u32
 }

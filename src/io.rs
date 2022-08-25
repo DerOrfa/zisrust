@@ -10,7 +10,7 @@ pub enum Endian{Big,Little}
 
 /// The `FileRead` trait allows for complex structures to be "gotten" from implementors of the `FileGet` trait.
 pub trait FileRead<T:Read+Seek> {
-	fn read(file:&mut T, endianess: &Endian) -> std::io::Result<Self> where Self:Sized;
+	fn read(file:&mut T, endianess: &Endian) -> Result<Self> where Self:Sized;
 }
 
 /// The `FileGet` trait allows for reading complex structures that implement the FileRead trait from a source.
@@ -59,3 +59,4 @@ impl Data {
 		source.to_vec()
 	}
 }
+
