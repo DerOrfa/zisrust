@@ -1,38 +1,33 @@
+use std::borrow::Borrow;
 use std::error::Error;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
-use rusqlite::{params, Connection, Result};
-use uuid::Uuid;
-use clap::{Args,Command,arg,crate_version,value_parser};
+use rusqlite::Connection;
+use argh::FromArgs;
+use zisrust::io::zisraw;
+use zisrust::io::zisraw::ZisrawInterface;
+use zisrust::utils::XmlUtil;
+use zisrust::db;
 
-#[derive(Debug)]
-struct CziFile {
-	file_guid:Uuid, //Unique Per file
-	primary_file_guid:Option<Uuid>,//Unique Guid of Master file (file_part 0)
-	file_part:i32, // Part number in multi-file scenarios
-	original_path: PathBuf,
-	meta_data:String
+#[derive(FromArgs)]
+/// Reach new heights.
+struct Cli {
+	/// an optional nickname for the pilot
+	#[argh(option, default = "PathBuf::from(\"czi_registry.db\")")]
+	dbfile: PathBuf,
+	#[argh(positional)]
+	files:Vec<PathBuf>
 }
-
 fn main() -> Result<(), Box<dyn Error>> {
-	let m = Command::new("czi file registry")
-		.author("Enrico Reimer, reimer@cbs.mpg.de")
-		.version(crate_version!())
-		.about("sqlite backed registry for czi files")
-		.arg(arg!(<FILE>).value_parser(value_parser!(PathBuf)))
-		.arg(
-			arg!(-d --database [DB] "Optionally sets name for the database file")
-				.default_value("czi_registry.db")
-		)
-		.get_matches();
 
-	let db_file = m.get_one::<PathBuf>("DB").unwrap();
-	let conn = Connection::open(db_file)?;
+	let cli: Cli = argh::from_env();
 
-	conn.execute(
-		"create table if not exists files (
-             file_guid text primary key, primary_file_guid text, file_part integer, original_path string, meta_data string
-         )",
-		[],
-	)?;
+	let conn = db::init_db(&cli.dbfile)?;
+
+	for fname in cli.files {
+		let file = BufReader::new(File::open(fname)?);
+		db::register_file(&conn,file)?;
+	}
 	Ok(())
 }
