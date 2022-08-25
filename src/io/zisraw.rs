@@ -41,20 +41,13 @@ pub struct ImageInfo{
 pub trait ZisrawInterface{
 	fn get_metadata(&self,file:&mut BufReader<File>) -> Result<zisraw_structs::Metadata>;
 	fn get_directory(&self,file:&mut BufReader<File>) -> Result<zisraw_structs::Directory>;
-	fn get_metadata_element(&self,file:&mut BufReader<File>) -> Result<xmltree::Element>{
-		let mut cache = self.get_metadata(file)?.cache;
-		cache.get()
-			.get_child("Metadata")
-			.ok_or(Error::new(InvalidData,"\"Metadata\" missing in xml stream"))
-			.cloned()
-	}
 	fn get_metadata_xml(&self,file:&mut BufReader<File>) -> Result<String>{
 		let e = self.get_metadata(file)?;
 		Ok(e.cache.source.clone())
 	}
 	fn get_image_info(&self,file:&mut BufReader<File>) -> Result<ImageInfo>{
 		let scaling_path=["Scaling","Items"];
-		let mut meta = self.get_metadata_element(file)?;
+		let mut meta = self.get_metadata(file)?.as_tree()?;
 		let image_props = meta
 			.take_child("Information").unwrap()
 			.take_child("Image").unwrap();

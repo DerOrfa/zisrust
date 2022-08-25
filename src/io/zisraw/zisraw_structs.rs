@@ -1,5 +1,7 @@
 use uuid::Uuid;
 use crate::io::Data;
+use xmltree;
+use std::io::{Result,Error,ErrorKind::InvalidData};
 
 #[derive(Debug)]
 pub struct Segment{
@@ -52,6 +54,15 @@ pub struct Directory{
 pub struct Metadata{
 	//pub AttachmentSize:i32, //NOT USED CURRENTLY
 	pub cache:crate::io::basic::Cached<String,xmltree::Element>
+}
+
+impl Metadata {
+	pub fn as_tree(&mut self) -> Result<xmltree::Element> {
+		self.cache.get()
+			.get_child("Metadata")
+			.ok_or(Error::new(InvalidData,"\"Metadata\" missing in xml stream"))
+			.cloned()
+	}
 }
 
 #[derive(Debug)]
