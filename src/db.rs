@@ -1,7 +1,8 @@
 use std::borrow::Borrow;
 use std::fs::File;
-use std::io::BufReader;
+use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use rusqlite::Connection;
 use uuid::Uuid;
 use crate::db::RegisterSuccess::{FileExists, ImageExists, Inserted};
@@ -50,7 +51,7 @@ impl DB {
 		self.conn.prepare("SELECT filename FROM files WHERE filename=?")?
 			.exists([filename.to_str().unwrap()])
 	}
-	fn register_image(&self,hd:&zisraw_structs::FileHeader, file:&mut BufReader<File>) -> RegisterResult{
+	fn register_image(&self,hd:&zisraw_structs::FileHeader, file:&Arc<dyn FileExt>) -> RegisterResult{
 		if !self.has_image(&hd.FileGuid)?
 		{ // image is not yet known, register it
 			let mut metadata = hd.get_metadata(file)?;
@@ -108,10 +109,10 @@ impl DB {
 		if self.has_file(&filename)?{
 			return Ok(FileExists);//file is already registered
 		}
-		let mut file = BufReader::new(File::open(filename.clone())?);
-		let hd = zisraw::get_file_header(&mut file)?;
+		let file:Arc<dyn FileExt> = Arc::new(File::open(filename.clone())?);
+		let hd = zisraw::get_file_header(&file)?;
 
-		let result = self.register_image(&hd,&mut file)?;
+		let result = self.register_image(&hd,&file)?;
 
 		// register filename regardless if image was new and return either result of registration or error
 		self.conn.execute(

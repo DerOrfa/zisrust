@@ -1,7 +1,9 @@
-use std::io::{Read, Result, Seek, BufReader, Error};
+use std::io::{Read, Result, Error};
 use crate::io::basic::Cached;
 use std::ffi::CStr;
 use std::io::ErrorKind::InvalidInput;
+use std::os::unix::fs::FileExt;
+use std::sync::Arc;
 
 mod basic;
 pub mod zisraw;
@@ -21,10 +23,10 @@ pub trait FileRead<T:Read> {
 ///
 /// Please note that each reading operation is done at the current reading position. You might want to do seek before.
 pub trait FileGet<T:Read> {
-	fn get<R:FileRead<T>> (&mut self, endianess: &Endian) ->Result<R>;
+	fn get_scalar<R:FileRead<T>> (&mut self, endianess: &Endian) ->Result<R>;
 	fn get_utf8(&mut self, len:u64) -> Result<String>;
 	fn get_ascii<const LEN: usize>(&mut self) -> Result<String> {
-		let bytes:[u8;LEN]=self.get(&Endian::Little)?;//endinaness is irrelevant here
+		let bytes:[u8;LEN]=self.get_scalar(&Endian::Little)?;//endinaness is irrelevant here
 		// todo replace with CStr::from_bytes_until_nul once its stable
 		match unsafe{CStr::from_bytes_with_nul_unchecked(&bytes)}.to_str(){
 			Ok(s) => Ok(String::from(s.trim_end_matches('\0'))),
@@ -32,35 +34,29 @@ pub trait FileGet<T:Read> {
 		}
 	}
 	fn get_vec<R:FileRead<T>>(&mut self, len: usize, endianess: &Endian) -> Result<Vec<R>> {
-		std::iter::from_fn(|| Some(self.get(endianess)))
+		std::iter::from_fn(|| Some(self.get_scalar(endianess)))
 			.take(len)
 			.collect()
 	}
 }
 
 #[derive(Debug)]
-pub struct Data{
-	cache: Cached<memmap::Mmap,Vec<u8>>
+pub struct DataFromFile{
+	cache: Cached<(Arc<dyn FileExt>,u64,usize),Vec<u8>>
 }
-impl Data {
-	pub fn new(file:&mut BufReader<std::fs::File>,size:usize)->Result<Data>{
-		let pos= file.stream_position()?;
-		let mmap = unsafe{
-			memmap::MmapOptions::new()
-				.offset(pos)
-				.len(size)
-				.map(file.get_ref())
-		}?;
-		file.seek_relative(size as i64)?;//simulate consumption of the data
-		Ok(Data{
-			cache: basic::Cached::new(mmap,Self::produce)
-		})
+impl DataFromFile {
+	pub fn new(file:&Arc<dyn FileExt>, pos:u64,size:usize)->Self{
+		Self{
+			cache: Cached::new((file.clone(),pos,size),Self::produce)
+		}
 	}
 	pub fn get(&mut self)->&Vec<u8>{
 		self.cache.get()
 	}
-	fn produce(source:&memmap::Mmap)->Vec<u8>{
-		source.to_vec()
+	fn produce(source:&(Arc<dyn FileExt>,u64,usize))->Vec<u8>	{
+		let mut buff = vec![0;source.2];
+		source.0.read_exact_at(buff.as_mut_slice(),source.1).unwrap(); // todo handle the error
+		buff
 	}
 }
 

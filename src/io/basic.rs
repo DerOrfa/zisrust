@@ -62,7 +62,7 @@ impl<S,T> Cached<S,T> {
 }
 
 impl<T:Read> FileGet<T> for T{
-	fn get<R: FileRead<T>>(&mut self, endianess: &Endian) -> Result<R> {
+	fn get_scalar<R: FileRead<T>>(&mut self, endianess: &Endian) -> Result<R> {
 		R::read(self,endianess)
 	}
 	fn get_utf8(&mut self, len: u64) -> Result<String> {
@@ -85,7 +85,7 @@ impl<T: Read> FileRead<T> for f64 {
 
 impl<T: Read> FileRead<T> for uuid::Uuid{
 	fn read(file: &mut T, _: &Endian) -> Result<Self> {
-		let id:[u8;16] = file.get(&Endian::Little)?;
+		let id:[u8;16] = file.get_scalar(&Endian::Little)?;
 		Ok(uuid::Uuid::from_bytes(id))
 	}
 }

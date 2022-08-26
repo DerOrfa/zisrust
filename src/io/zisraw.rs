@@ -2,10 +2,10 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::fs::File;
 use std::iter::Iterator;
-use std::io::{BufReader, Seek, Error, ErrorKind::InvalidData, Result, SeekFrom};
-use crate::io::{Endian, FileGet};
+use std::io::{Error, ErrorKind::InvalidData, Result};
+use std::os::unix::fs::FileExt;
+use std::sync::Arc;
 use crate::utils::XmlUtil;
 use uom::si::{f64::Length,length::meter};
 use crate::io::zisraw::zisraw_structs::Attachment;
@@ -13,9 +13,8 @@ use crate::io::zisraw::zisraw_structs::Attachment;
 mod zisraw_impl;
 pub mod zisraw_structs;
 
-pub fn get_file_header(file:&mut BufReader<File>) -> Result<zisraw_structs::FileHeader>{
-	file.seek(SeekFrom::Start(0))?;
-	let s:zisraw_structs::Segment = file.get(&Endian::Little)?;
+pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<zisraw_structs::FileHeader>{
+	let s = zisraw_structs::Segment::new(file, 0)?;
 	match s.block {
 		zisraw_structs::SegmentBlock::FileHeader(hd) => Ok(hd),
 		_ => Err(Error::new(InvalidData,"Unexpected block when looking for header"))
@@ -40,15 +39,15 @@ pub struct ImageInfo{
 }
 
 pub trait ZisrawInterface{
-	fn get_metadata(&self,file:&mut BufReader<File>) -> Result<zisraw_structs::Metadata>;
-	fn get_directory(&self,file:&mut BufReader<File>) -> Result<zisraw_structs::Directory>;
-	fn get_attachments(&self,file:&mut BufReader<File>)-> Result<Vec<zisraw_structs::AttachmentEntryA1>>;
+	fn get_metadata(&self,file:&Arc<dyn FileExt>) -> Result<zisraw_structs::Metadata>;
+	fn get_directory(&self,file:&Arc<dyn FileExt>) -> Result<zisraw_structs::Directory>;
+	fn get_attachments(&self,file:&Arc<dyn FileExt>)-> Result<Vec<zisraw_structs::AttachmentEntryA1>>;
 
-	fn get_metadata_xml(&self,file:&mut BufReader<File>) -> Result<String>{
+	fn get_metadata_xml(&self,file:&Arc<dyn FileExt>) -> Result<String>{
 		let e = self.get_metadata(file)?;
 		Ok(e.cache.source.clone())
 	}
-	fn get_image_info(&self,file:&mut BufReader<File>) -> Result<ImageInfo>{
+	fn get_image_info(&self,file:&Arc<dyn FileExt>) -> Result<ImageInfo>{
 		let scaling_path=["Scaling","Items"];
 		let mut meta = self.get_metadata(file)?.as_tree()?;
 		let image_props = meta
@@ -95,15 +94,14 @@ pub trait ZisrawInterface{
 		}
 		Ok(info)
 	}
-	fn get_thumbnail(&self, file:&mut BufReader<File>) -> Result<Option<Attachment>>{
+	fn get_thumbnail(&self, file:&Arc<dyn FileExt>) -> Result<Option<Attachment>>{
 		let thumbnail = self.get_attachments(file)?
 			.into_iter()
 			.filter(|a|a.Name=="Thumbnail")
 			.next();
 
 		if thumbnail.is_some(){
-			file.seek(SeekFrom::Start(thumbnail.unwrap().FilePosition))?;
-			let att:zisraw_structs::Segment = file.get(&crate::io::Endian::Little)?;
+			let att = zisraw_structs::Segment::new(file,thumbnail.unwrap().FilePosition)?;
 			let att= match att.block{
 				zisraw_structs::SegmentBlock::Attachment(a) => a,
 				_ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,"Unexpected block when looking for attachment"))

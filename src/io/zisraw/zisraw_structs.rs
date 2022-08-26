@@ -1,14 +1,52 @@
+use std::collections::VecDeque;
 use uuid::Uuid;
-use crate::io::Data;
+use crate::io::{DataFromFile, Endian, FileGet};
 use xmltree;
-use std::io::{Result,Error,ErrorKind::InvalidData};
+use std::io::{Result, Error, ErrorKind::InvalidData};
+use std::os::unix::prelude::FileExt;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Segment{
 	pub allocated_size:u64,
 	pub used_size:u64,
 	pub pos:u64,
-	pub block:SegmentBlock
+	pub block:SegmentBlock,
+}
+
+impl Segment{
+	pub fn new(file:&Arc<dyn FileExt>,pos:u64) -> Result<Self>{
+		let endianess = &Endian::Little;
+		let mut buffer=VecDeque::<u8>::from([0;1024]);
+		file.read_exact_at(buffer.as_mut_slices().0,pos)?;
+		let id= buffer.get_ascii::<16>()?;
+		let allocated_size = buffer.get_scalar(endianess)?;
+		let used_size = buffer.get_scalar(endianess)?;
+		let allocated_size = if allocated_size == 0 {used_size} else {allocated_size};
+		let already_red = 1024-buffer.as_slices().0.len();
+		if allocated_size > 1024 {
+			let mut remain = vec![0;allocated_size as usize-already_red];
+			file.read_exact_at(remain.as_mut_slice(),pos+already_red as u64)?;
+			buffer.append(&mut remain.into())
+		} else {
+			buffer.truncate(allocated_size as usize);
+		}
+
+		let s = Segment{
+			pos, allocated_size,
+			used_size: {if used_size==0 {allocated_size} else {used_size}},
+			block: match id.as_str() {
+				"ZISRAWFILE" => SegmentBlock::FileHeader(buffer.get_scalar(endianess)?),
+				"ZISRAWATTDIR" => SegmentBlock::AttachmentDirectory(buffer.get_scalar(endianess)?),
+				"ZISRAWMETADATA" => SegmentBlock::Metadata(buffer.get_scalar(endianess)?),
+				// "ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(buffer.get_scalar(endianess)?),
+				"ZISRAWDIRECTORY" => SegmentBlock::Directory(buffer.get_scalar(endianess)?),
+				// "ZISRAWATTACH" => SegmentBlock::Attachment(buffer.get_scalar(endianess)?),
+				_ => SegmentBlock::DELETED
+			}
+		};
+		Ok(s)
+	}
 }
 
 #[derive(Debug)]
@@ -73,7 +111,7 @@ pub struct AttachmentDirectory{
 #[derive(Debug)]
 pub struct Attachment{
 	pub Entry:AttachmentEntryA1,
-	pub Data:Data
+	pub Data:DataFromFile
 }
 
 #[derive(Debug)]
@@ -88,11 +126,11 @@ pub struct AttachmentEntryA1{
 }
 
 #[derive(Debug)]
-pub struct SubBlock {
+pub struct SubBlock{
 	pub Entry:DirectoryEntryDV,
 	pub Metadata: crate::io::basic::Cached<String,xmltree::Element>,
-	pub Data:Data,
-	pub Attachment:Option<Data>
+	pub Data:DataFromFile,
+	pub Attachment:Option<DataFromFile>
 }
 
 #[derive(Debug)]
