@@ -10,7 +10,7 @@ use crate::utils::XmlUtil;
 use uom::si::{f64::Length,length::meter};
 
 mod zisraw_impl;
-mod zisraw_structs;
+pub mod zisraw_structs;
 
 pub fn get_file_header(file:&mut BufReader<File>) -> Result<zisraw_structs::FileHeader>{
 	file.seek(SeekFrom::Start(0))?;
@@ -41,6 +41,8 @@ pub struct ImageInfo{
 pub trait ZisrawInterface{
 	fn get_metadata(&self,file:&mut BufReader<File>) -> Result<zisraw_structs::Metadata>;
 	fn get_directory(&self,file:&mut BufReader<File>) -> Result<zisraw_structs::Directory>;
+	fn get_attachments(&self,file:&mut BufReader<File>)-> Result<Vec<zisraw_structs::AttachmentEntryA1>>;
+
 	fn get_metadata_xml(&self,file:&mut BufReader<File>) -> Result<String>{
 		let e = self.get_metadata(file)?;
 		Ok(e.cache.source.clone())

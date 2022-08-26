@@ -250,4 +250,13 @@ impl ZisrawInterface for FileHeader{
 			_ => Err(Error::new(InvalidData,"Unexpected block when looking for directory"))
 		}
 	}
+	fn get_attachments(&self,file:&mut BufReader<File>)-> Result<Vec<AttachmentEntryA1>>{
+		file.seek(SeekFrom::Start(self.AttachmentDirectoryPosition))?;
+		let s:Segment = file.get(&Endian::Little)?;
+		let attachments= match s.block {
+			SegmentBlock::AttachmentDirectory(d) => Ok(d),
+			_ => Err(Error::new(InvalidData,"Unexpected block when looking for directory"))
+		}?;
+		Ok(attachments.Entries)
+	}
 }

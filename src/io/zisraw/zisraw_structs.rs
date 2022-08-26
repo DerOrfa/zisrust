@@ -42,7 +42,7 @@ pub struct FileHeader{
 	pub DirectoryPosition:u64,
 	pub MetadataPosition:u64,
 	pub UpdatePending:bool,
-	pub AttachmentDirectoryPosition:i64
+	pub AttachmentDirectoryPosition:u64
 }
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ pub struct Attachment{
 pub struct AttachmentEntryA1{
 	pub SchemaType:String, //4 bytes
 	pub Reserved:[u8;10],
-	pub FilePosition:i64,
+	pub FilePosition:u64,
 	pub FilePart:i32,
 	pub ContentGuid:Uuid,
 	pub ContentFileType:String, //8 bytes
