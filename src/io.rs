@@ -9,7 +9,7 @@ pub mod zisraw;
 pub enum Endian{Big,Little}
 
 /// The `FileRead` trait allows for complex structures to be "gotten" from implementors of the `FileGet` trait.
-pub trait FileRead<T:Read+Seek> {
+pub trait FileRead<T:Read> {
 	fn read(file:&mut T, endianess: &Endian) -> Result<Self> where Self:Sized;
 }
 
@@ -20,7 +20,7 @@ pub trait FileRead<T:Read+Seek> {
 /// That means not all structures cen be "gotten" from any implementors of the `Read` and `Seek`.
 ///
 /// Please note that each reading operation is done at the current reading position. You might want to do seek before.
-pub trait FileGet<T:Read+Seek> {
+pub trait FileGet<T:Read> {
 	fn get<R:FileRead<T>> (&mut self, endianess: &Endian) ->Result<R>;
 	fn get_utf8(&mut self, len:u64) -> Result<String>;
 	fn get_ascii<const LEN: usize>(&mut self) -> Result<String> {

@@ -61,7 +61,7 @@ impl FileRead<BufReader<File>> for Segment{
 	}
 }
 
-impl<T: Read+Seek> FileRead<T> for FileHeader{
+impl<T: Read> FileRead<T> for FileHeader{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		Ok(FileHeader{
 			version: [file.get(endianess)?,file.get(endianess)?],
@@ -88,7 +88,7 @@ impl<T: Read+Seek> FileRead<T> for AttachmentDirectory{
 	}
 }
 
-impl<T: Read+Seek> FileRead<T> for AttachmentEntryA1{
+impl<T: Read> FileRead<T> for AttachmentEntryA1{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		Ok(AttachmentEntryA1{
 			SchemaType: file.get_ascii::<2>()?,
@@ -131,7 +131,7 @@ impl FileRead<BufReader<File>> for SubBlock{
 	}
 }
 
-impl<T: Read+Seek> FileRead<T> for DirectoryEntryDV{
+impl<T: Read> FileRead<T> for DirectoryEntryDV{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		let SchemaType= file.get_ascii::<2>()?;
 		let PixelType = file.get(endianess)?;
@@ -180,7 +180,7 @@ impl pyramid::Tile for DirectoryEntryDV{
 	}
 }
 
-impl<T: Read+Seek> FileRead<T> for DimensionEntryDV1{
+impl<T: Read> FileRead<T> for DimensionEntryDV1{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		Ok(DimensionEntryDV1{
 			Dimension: file.get_ascii::<4>()?,

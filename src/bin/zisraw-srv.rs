@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::PathBuf;
 use argh::FromArgs;
-use zisrust::db::{DB,RegisterResult, RegisterSuccess};
+use zisrust::db::{DB, RegisterSuccess};
 
 #[derive(FromArgs)]
 #[argh(description = "sqlite backed registry for czi files")]

@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
-use std::io::{Read, Seek, Result};
+use std::io::{Read, Result};
 use std::time::Instant;
 use crate::io::FileGet;
 use super::{FileRead, Endian};
@@ -61,7 +61,7 @@ impl<S,T> Cached<S,T> {
 	}
 }
 
-impl<T:Read+Seek> FileGet<T> for T{
+impl<T:Read> FileGet<T> for T{
 	fn get<R: FileRead<T>>(&mut self, endianess: &Endian) -> Result<R> {
 		R::read(self,endianess)
 	}
@@ -72,25 +72,25 @@ impl<T:Read+Seek> FileGet<T> for T{
 	}
 }
 
-impl<T: Read+Seek> FileRead<T> for f32 {
+impl<T: Read> FileRead<T> for f32 {
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		Ok(f32::from_bits(u32::read(file,endianess)?))
 	}
 }
-impl<T: Read+Seek> FileRead<T> for f64 {
+impl<T: Read> FileRead<T> for f64 {
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		Ok(f64::from_bits(u64::read(file,endianess)?))
 	}
 }
 
-impl<T: Read+Seek> FileRead<T> for uuid::Uuid{
+impl<T: Read> FileRead<T> for uuid::Uuid{
 	fn read(file: &mut T, _: &Endian) -> Result<Self> {
 		let id:[u8;16] = file.get(&Endian::Little)?;
 		Ok(uuid::Uuid::from_bytes(id))
 	}
 }
 
-impl<const N:usize,T: Read+Seek> FileRead<T> for [u8;N] {
+impl<const N:usize,T: Read> FileRead<T> for [u8;N] {
 	fn read(file: &mut T, _: &Endian) -> Result<Self> {
 		let mut ret=[0;N];
 		file.read_exact(&mut ret)?;
@@ -98,7 +98,7 @@ impl<const N:usize,T: Read+Seek> FileRead<T> for [u8;N] {
 	}
 }
 
-impl<I: Integer+Default,T: Read+Seek> FileRead<T> for I {
+impl<I: Integer+Default,T: Read> FileRead<T> for I {
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self>{
 		let ret:Result<Self>=raw_read(file);
 		#[cfg(target_endian = "little")]
@@ -142,7 +142,7 @@ impl Integer for i128{
 	fn swap_bytes(self) -> Self {self.swap_bytes()}
 }
 
-fn raw_read<T: Read+Seek,R: Default+Integer>(file: &mut T) -> Result<R> {
+fn raw_read<T: Read,R: Default+Integer>(file: &mut T) -> Result<R> {
 	let mut ret: R = R::default();
 
 	// scary pointer trickery
