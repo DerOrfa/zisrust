@@ -56,6 +56,9 @@ impl Data {
 			cache: basic::Cached::new(mmap,Self::produce)
 		})
 	}
+	pub fn get(&mut self)->&Vec<u8>{
+		self.cache.get()
+	}
 	fn produce(source:&memmap::Mmap)->Vec<u8>{
 		source.to_vec()
 	}

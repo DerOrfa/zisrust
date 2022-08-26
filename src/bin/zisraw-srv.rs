@@ -1,8 +1,7 @@
 use std::error::Error;
 use std::path::PathBuf;
 use argh::FromArgs;
-use zisrust::db;
-use zisrust::db::RegisterResult;
+use zisrust::db::{DB,RegisterResult, RegisterSuccess};
 
 #[derive(FromArgs)]
 #[argh(description = "sqlite backed registry for czi files")]
@@ -18,16 +17,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	let cli: Cli = argh::from_env();
 
-	let conn = db::init_db(&cli.dbfile)?;
+	let database = DB::new(&cli.dbfile)?;
 
 	for fname in cli.files {
-		match db::register_file(&conn,&fname){
-			RegisterResult::Ok => {}
-			RegisterResult::ImageExists(v) =>
-				println!("image is already registered, known filenames are {v:?}"),
-			RegisterResult::FileExists => println!("{:?} is already registered",fname),
-			RegisterResult::SqlErr(e) => eprintln!("{e}"),
-			RegisterResult::IoErr(e) => eprintln!("{e}")
+		match database.register_file(&fname)?{
+			RegisterSuccess::Inserted => {}
+			RegisterSuccess::ImageExists(v) => println!("image is already registered, known filenames are {v:?}"),
+			RegisterSuccess::FileExists => println!("{:?} is already registered",fname)
 		};
 	}
 	Ok(())

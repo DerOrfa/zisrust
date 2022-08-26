@@ -1,15 +1,12 @@
 use std::borrow::Borrow;
 use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom};
+use std::io::BufReader;
 use std::path::PathBuf;
 use rusqlite::Connection;
-use uom::si::volume::Units::register_ton;
 use uuid::Uuid;
-use xmltree::Error::Io;
-use crate::db::RegisterResult::{ImageExists,FileExists,SqlErr,IoErr};
-use crate::io::{FileGet, zisraw};
-use crate::io::zisraw::zisraw_structs::{Segment, SegmentBlock};
-use crate::io::zisraw::ZisrawInterface;
+use crate::db::RegisterSuccess::{FileExists, ImageExists, Inserted};
+use crate::io::zisraw;
+use crate::io::zisraw::{zisraw_structs,ZisrawInterface};
 use crate::utils::XmlUtil;
 
 const IMAGE_TABLE_CREATE: &'static str =
@@ -19,7 +16,9 @@ const IMAGE_TABLE_CREATE: &'static str =
 		file_part integer,
 		acquisition_timestamp integer,
 		original_path string,
-		meta_data string
+		meta_data string,
+		thumbnail_type string,
+		thumbnail blob
 	)"#;
 
 const FILE_TABLE_CREATE: &'static str =
@@ -30,126 +29,96 @@ const FILE_TABLE_CREATE: &'static str =
 		FOREIGN KEY (image_id) REFERENCES images (guid)
 	)"#;
 
-pub enum RegisterResult{
-	Ok,
+pub enum RegisterSuccess{
+	Inserted,
 	ImageExists(Vec<String>),
-	FileExists,
-	SqlErr(rusqlite::Error),
-	IoErr(std::io::Error)
+	FileExists
+}
+type RegisterError = Box<dyn std::error::Error>;
+pub type RegisterResult = Result<RegisterSuccess,RegisterError>;
+
+pub struct DB {
+	conn:Connection
 }
 
-pub fn init_db(filename:&PathBuf) -> rusqlite::Result<Connection>{
-	let conn = Connection::open(filename)?;
-	conn.execute(IMAGE_TABLE_CREATE, [])?;
-	conn.execute(FILE_TABLE_CREATE, [])?;
-	Ok(conn)
-}
-
-pub fn lookup_filenames(conn:&Connection, guid:&Uuid) -> rusqlite::Result<Vec<String>>{
-	conn.prepare("SELECT filename FROM files WHERE image_id = ?")?
-		.query_map([guid.to_string()],|row|row.get(0))?
-		.collect()
-}
-
-pub fn has_image(conn:&Connection, guid:&Uuid) -> rusqlite::Result<bool>{
-	conn.prepare("SELECT guid FROM images WHERE guid=?")?
-		.exists([guid.to_string()])
-}
-
-pub fn has_file(conn:&Connection, filename:&PathBuf) -> rusqlite::Result<bool>{
-	conn.prepare("SELECT filename FROM files WHERE filename=?")?
-		.exists([filename.to_str().unwrap()])
-}
-
-pub fn register_file(conn:&Connection, filename:&PathBuf) -> RegisterResult{
-	if match has_file(conn,&filename){Ok(b) => b, Err(e) => return SqlErr(e)}{
-		return FileExists;//file is already registered
+impl DB {
+	fn has_image(&self, guid:&Uuid) -> rusqlite::Result<bool>{
+		self.conn.prepare("SELECT guid FROM images WHERE guid=?")?
+			.exists([guid.to_string()])
 	}
-	let mut file = match File::open(filename.clone()){
-		Ok(f) => BufReader::new(f),
-		Err(e) => return IoErr(e)
-	};
-	let hd = match zisraw::get_file_header(&mut file){
-		Ok(hd) => hd,
-		Err(e) => return IoErr(e)
-	};
-
-	let result = if !match has_image(conn,&hd.FileGuid){Ok(b) => b,Err(e) => return SqlErr(e)}
-	{ // image is not yet known, register it
-		let mut metadata = match hd.get_metadata(&mut file){
-			Ok(m) => m,
-			Err(e) => return IoErr(e)
-		};
-		let mut metadata_tree = match metadata.as_tree(){
-			Ok(m) => m,
-			Err(e) => return IoErr(e)
-		};
-
-		let image_branch = metadata_tree
-			.take_child("Information").unwrap()
-			.take_child("Image").unwrap();
-		let acquisition_timestamp: chrono::DateTime<chrono::Local> =
-			match image_branch.child_into("AcquisitionDateAndTime"){
-				Ok(v) => v,
-				Err(e) => return IoErr(e)
-			};
-
-		let org_filename =
-			match metadata_tree.drill_down(["Experiment", "ImageName"].borrow()){
-				Ok(e) => e,
-				Err(e) => return IoErr(e)
-			}.get_text().unwrap();
-		let primary_file_guid = if hd.PrimaryFileGuid == hd.FileGuid { None } else { Some(hd.PrimaryFileGuid.to_string()) };
-
-		let thumbnail = match hd.get_attachments(&mut file){
-			Ok(a) => a,
-			Err(e) => return IoErr(e)
-		}.into_iter().filter(|a|a.Name=="Thumbnail").next();
-
-		if thumbnail.is_some(){
-			match file.seek(SeekFrom::Start(thumbnail.unwrap().FilePosition)){Err(e) => return IoErr(e),_ => {}};
-			let att:Segment = match file.get(&crate::io::Endian::Little){
-				Ok(v) => v,
-				Err(e) => return IoErr(e)
-			};
-			let att= match att.block{
-				SegmentBlock::Attachment(a) => a,
-				_ => return IoErr(std::io::Error::new(std::io::ErrorKind::InvalidInput,"Unexpected block when looking for attachment"))
-			};
-			println!("{att:?}");
-		}
-
-		match conn.execute(
-			"\
-				INSERT INTO images (guid, parent_guid, file_part, acquisition_timestamp, original_path, meta_data) \
-				values (?1, ?2, ?3, ?4, ?5, ?6)\
-			",
-			(hd.FileGuid.to_string(), primary_file_guid, hd.FilePart, acquisition_timestamp.timestamp(), org_filename, metadata.cache.source)
-		){
-			Ok(_) => RegisterResult::Ok,//image was registered
-			Err(e) => return SqlErr(e)
-		}
-	} else {//image is already registered but filename is new
-		let existing = lookup_filenames(conn,&hd.FileGuid);
-		match existing{
-			Ok(v) => ImageExists(v),
-			Err(e) => SqlErr(e)
-		}
-	};
-
-	// register filename regardless if image was new and return either result of registration or error
-	match conn.execute(
-		"\
-				INSERT INTO files (filename, image_id) \
-				values (?1, ?2)\
-			",
-		(filename.to_str().unwrap(), hd.FileGuid.to_string())
-	){
-		Ok(_) => result,
-		Err(e) => SqlErr(e)
+	fn has_file(&self, filename:&PathBuf) -> rusqlite::Result<bool>{
+		self.conn.prepare("SELECT filename FROM files WHERE filename=?")?
+			.exists([filename.to_str().unwrap()])
 	}
+	fn register_image(&self,hd:&zisraw_structs::FileHeader, file:&mut BufReader<File>) -> RegisterResult{
+		if !self.has_image(&hd.FileGuid)?
+		{ // image is not yet known, register it
+			let mut metadata = hd.get_metadata(file)?;
+			let mut metadata_tree = metadata.as_tree()?;
 
+			let image_branch = metadata_tree
+				.take_child("Information").unwrap()
+				.take_child("Image").unwrap();
+			let acquisition_timestamp: chrono::DateTime<chrono::Local> =
+				image_branch.child_into("AcquisitionDateAndTime")?;
 
+			let org_filename =
+				metadata_tree.drill_down(["Experiment", "ImageName"].borrow())?
+					.get_text().unwrap();
+			let primary_file_guid = if hd.PrimaryFileGuid == hd.FileGuid { None } else { Some(hd.PrimaryFileGuid.to_string()) };
 
+			let thumbnail = hd.get_thumbnail(file)?;
+			let thumbnail_type = thumbnail.as_ref().map(|t|&t.Entry.ContentFileType);
+
+			self.conn.execute(
+				"\
+				INSERT INTO images (guid, parent_guid, file_part, acquisition_timestamp, original_path, meta_data, thumbnail_type) \
+				values (?1, ?2, ?3, ?4, ?5, ?6, ?7)\
+			",
+				(
+					hd.FileGuid.to_string(),
+					primary_file_guid,
+					hd.FilePart,
+					acquisition_timestamp.timestamp(),
+					org_filename,
+					metadata.cache.source,
+					thumbnail_type
+				)
+			)?;
+			Ok(Inserted)
+		} else {//image is already registered but filename is new
+			let existing = self.lookup_filenames(&hd.FileGuid)?;
+			Ok(ImageExists(existing))
+		}
+	}
+	pub fn new(filename:&PathBuf) -> rusqlite::Result<Self> {
+		let slf=Self{
+			conn: Connection::open(filename)?
+		};
+		slf.conn.execute(IMAGE_TABLE_CREATE, [])?;
+		slf.conn.execute(FILE_TABLE_CREATE, [])?;
+		Ok(slf)
+	}
+	pub fn lookup_filenames(&self,guid:&Uuid) -> rusqlite::Result<Vec<String>>{
+		self.conn.prepare("SELECT filename FROM files WHERE image_id = ?")?
+			.query_map([guid.to_string()],|row|row.get(0))?
+			.collect()
+	}
+	pub fn register_file(&self, filename:&PathBuf) -> RegisterResult{
+		if self.has_file(&filename)?{
+			return Ok(FileExists);//file is already registered
+		}
+		let mut file = BufReader::new(File::open(filename.clone())?);
+		let hd = zisraw::get_file_header(&mut file)?;
+
+		let result = self.register_image(&hd,&mut file)?;
+
+		// register filename regardless if image was new and return either result of registration or error
+		self.conn.execute(
+			"INSERT INTO files (filename, image_id) values (?1, ?2)",
+			(filename.to_str().unwrap(), hd.FileGuid.to_string())
+		)?;
+		Ok(result)
+	}
 }
 

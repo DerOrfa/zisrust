@@ -8,6 +8,7 @@ use std::io::{BufReader, Seek, Error, ErrorKind::InvalidData, Result, SeekFrom};
 use crate::io::{Endian, FileGet};
 use crate::utils::XmlUtil;
 use uom::si::{f64::Length,length::meter};
+use crate::io::zisraw::zisraw_structs::Attachment;
 
 mod zisraw_impl;
 pub mod zisraw_structs;
@@ -93,5 +94,24 @@ pub trait ZisrawInterface{
 			}
 		}
 		Ok(info)
+	}
+	fn get_thumbnail(&self, file:&mut BufReader<File>) -> Result<Option<Attachment>>{
+		let thumbnail = self.get_attachments(file)?
+			.into_iter()
+			.filter(|a|a.Name=="Thumbnail")
+			.next();
+
+		if thumbnail.is_some(){
+			file.seek(SeekFrom::Start(thumbnail.unwrap().FilePosition))?;
+			let att:zisraw_structs::Segment = file.get(&crate::io::Endian::Little)?;
+			let att= match att.block{
+				zisraw_structs::SegmentBlock::Attachment(a) => a,
+				_ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,"Unexpected block when looking for attachment"))
+			};
+			Ok(Some(att))
+		} else {Ok(None)}
+
+
+
 	}
 }
