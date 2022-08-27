@@ -74,8 +74,8 @@ impl DB {
 
 			self.conn.execute(
 				"\
-				INSERT INTO images (guid, parent_guid, file_part, acquisition_timestamp, original_path, meta_data, thumbnail_type) \
-				values (?1, ?2, ?3, ?4, ?5, ?6, ?7)\
+				INSERT INTO images (guid, parent_guid, file_part, acquisition_timestamp, original_path, meta_data, thumbnail_type, thumbnail) \
+				values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)\
 			",
 				(
 					hd.FileGuid.to_string(),
@@ -84,7 +84,7 @@ impl DB {
 					acquisition_timestamp.timestamp(),
 					org_filename,
 					metadata.cache.source,
-					thumbnail_type
+					thumbnail_type,thumbnail_data
 				)
 			)?;
 			Ok(Inserted)

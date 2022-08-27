@@ -1,15 +1,14 @@
-use std::collections::VecDeque;
 use uuid::Uuid;
 use crate::io::{DataFromFile, Endian, FileGet};
 use xmltree;
-use std::io::{Result, Error, ErrorKind::InvalidData, Cursor, Read, Seek, SeekFrom};
+use std::io::{Result, Error, ErrorKind::InvalidData, Cursor, Seek, SeekFrom};
 use std::os::unix::prelude::FileExt;
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Segment{
-	pub allocated_size:usize,
-	pub used_size:usize,
+	pub allocated_size:u64,
+	pub used_size:u64,
 	pub pos:u64,
 	pub block:SegmentBlock,
 }
@@ -18,7 +17,7 @@ impl Segment{
 	pub fn new(file:&Arc<dyn FileExt>,pos:u64) -> Result<Self>{
 		let endianess = &Endian::Little;
 
-		// prepare and read one k for now
+		// prepare and read 1k for now
 		let mut buffer=Vec::<u8>::from([0;1024]);
 		file.read_exact_at(buffer.as_mut_slice(),pos)?;
 		let mut buffer=Cursor::new(buffer);
@@ -30,8 +29,8 @@ impl Segment{
 
 		// now that we know the segments size we go back an resize the buffer
 		let mut buffer= buffer.into_inner();
-		buffer.resize(allocated_size,0);
-		// ad read the remaining data, if there are some
+		buffer.resize(allocated_size as usize,0);
+		// and read the remaining data, if there are some
 		if allocated_size > 1024 {
 			file.read_exact_at(buffer.split_at_mut(1024).1,pos+1024)?;
 		}

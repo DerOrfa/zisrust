@@ -1,6 +1,4 @@
 #![allow(non_snake_case)]
-
-use std::collections::VecDeque;
 use crate::io::{FileRead, FileGet, Endian, DataFromFile, basic::Cached};
 use crate::io::zisraw::zisraw_structs::*;
 use std::io::{Read, ErrorKind::InvalidData, Error, Result, Seek, SeekFrom};
@@ -32,10 +30,10 @@ impl<T: Read> FileRead<T> for FileHeader{
 	}
 }
 
-impl<T: Read> FileRead<T> for AttachmentDirectory{
+impl<T: Read+Seek> FileRead<T> for AttachmentDirectory{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		let count:u32 = file.get_scalar(endianess)?;
-		skip(file, 252)?;
+		file.seek(SeekFrom::Start(32+256)).unwrap();
 		Ok(AttachmentDirectory{
 			Entries: file.get_vec(count as usize,endianess)?
 		})
@@ -56,10 +54,10 @@ impl<T: Read> FileRead<T> for AttachmentEntryA1{
 	}
 }
 
-impl<T: Read> FileRead<T> for Metadata{
+impl<T: Read+Seek> FileRead<T> for Metadata{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		let xml_size:i32= file.get_scalar(endianess)?;
-		skip(file,256-4)?;//actually there is also 4 bytes reserved for AttachmentSize, but that's "NOT USED CURRENTLY"
+		file.seek(SeekFrom::Start(32+256)).unwrap();//actually there is also 4 bytes reserved for AttachmentSize, but that's "NOT USED CURRENTLY"
 		let xml_string=file.get_utf8(xml_size as u64)?;
 		Ok(Metadata{
 			cache: Cached::new(xml_string, parse_xml)
@@ -70,29 +68,27 @@ impl<T: Read> FileRead<T> for Metadata{
 impl SubBlock{
 	pub fn new<F:Read+Seek>(buffer: &mut F, file:&Arc<dyn FileExt>, offset:u64) -> Result<Self> {
 		let endianess = &Endian::Little;
-		let skip_to= buffer.stream_position().unwrap()+256;
 		let metadata_size:u32 = buffer.get_scalar(endianess)?;
 		let attachment_size:u32= buffer.get_scalar(endianess)?;
 		let data_size:u64 = buffer.get_scalar(endianess)?;
 		let Entry = buffer.get_scalar(endianess)?;
 
-		let current_pos= buffer.stream_position().unwrap();
-		if skip_to>current_pos{
-			buffer.seek(SeekFrom::Start(skip_to)).unwrap();
+		if buffer.stream_position().unwrap() < 32+256{
+			buffer.seek(SeekFrom::Start(32+256)).unwrap();
 		}
 		let metadata_xml = buffer.get_utf8(metadata_size as u64)?;
 		let Metadata = Cached::new(metadata_xml, parse_xml);
 
-		let current_pos = offset+buffer.stream_position().unwrap();
-		let Data = DataFromFile::new(file, current_pos, data_size as usize);
+		let data_pos = offset+buffer.stream_position().unwrap();
+		let Data = DataFromFile::new(file, data_pos, data_size as usize);
 
 		let Attachment:Option<DataFromFile> =
 			if attachment_size>0 {
-				Some(DataFromFile::new(file, current_pos+data_size, attachment_size as usize))
+				Some(DataFromFile::new(file, data_pos+data_size, attachment_size as usize))
 			} else {
 				None
 			};
-		Ok(SubBlock{Entry,Metadata,	Data, Attachment,})
+		Ok(SubBlock{Entry,Metadata,	Data, Attachment})
 	}
 }
 
@@ -103,7 +99,7 @@ impl<T: Read> FileRead<T> for DirectoryEntryDV{
 		let FilePosition = file.get_scalar(endianess)?;
 		let FilePart = file.get_scalar(endianess)?;
 		let Compression = file.get_scalar(endianess)?;
-		let buffer:[u8;6] = file.get_scalar(endianess)?;
+		let buffer:[u8;6] = file.get_scalar(endianess)?;//PyramidType, and 5 reserved bytes
 		let dimension_count:u32 = file.get_scalar(endianess)?;
 		let DimensionEntries:Vec<DimensionEntryDV1> = file.get_vec(dimension_count as usize,endianess)?;
 		let map = DimensionEntries.into_iter().map(|de|(de.Dimension.clone(),de)).collect();
@@ -157,10 +153,10 @@ impl<T: Read> FileRead<T> for DimensionEntryDV1{
 	}
 }
 
-impl<T: Read> FileRead<T> for Directory{
+impl<T: Read+Seek> FileRead<T> for Directory{
 	fn read(file: &mut T, endianess: &Endian) -> Result<Self> {
 		let EntryCount:i32 = file.get_scalar(endianess)?;
-		skip(file,124)?;
+		file.seek(SeekFrom::Start(32+128)).unwrap();
 		Ok(Directory{
 			Entries: file.get_vec(EntryCount as usize,endianess)?
 		})
@@ -187,14 +183,12 @@ impl Directory {
 }
 
 impl Attachment{
-	pub fn new<F:Read>(buffer: &mut F, file:&Arc<dyn FileExt>, offset:u64) -> Result<Self> {
+	pub fn new<F:Read+Seek>(buffer: &mut F, file:&Arc<dyn FileExt>, offset:u64) -> Result<Self> {
 		let endianess= &Endian::Little;
-		let size:u32 = buffer.get_scalar(endianess)?;
-		skip(buffer,12)?;
+		let data_size:u32 = buffer.get_scalar(endianess)?;
+		buffer.seek(SeekFrom::Start(32+16)).unwrap();
 		let Entry = buffer.get_scalar(endianess)?;
-		let data_pos= buffer.as_slices().1.len() + 112;
-		let Data = DataFromFile::new(file,offset+data_pos as u64,size as usize);
-
+		let Data = DataFromFile::new(file, offset+32+256 as u64, data_size as usize);
 		Ok(Attachment{Entry,Data})
 	}
 }

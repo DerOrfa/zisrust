@@ -22,8 +22,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	for fname in cli.files {
 		match database.register_file(&fname)?{
 			RegisterSuccess::Inserted => {}
-			RegisterSuccess::ImageExists(v) => println!("image is already registered, known filenames are {v:?}"),
-			RegisterSuccess::FileExists => println!("{:?} is already registered",fname)
+			RegisterSuccess::ImageExists(v) => println!("image in {} is already registered, known filenames are {v:?}",fname.to_string_lossy()),
+			RegisterSuccess::FileExists => println!("{} is already registered",fname.to_string_lossy())
 		};
 	}
 	Ok(())
