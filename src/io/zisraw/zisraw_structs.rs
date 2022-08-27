@@ -2,14 +2,14 @@ use std::collections::VecDeque;
 use uuid::Uuid;
 use crate::io::{DataFromFile, Endian, FileGet};
 use xmltree;
-use std::io::{Result, Error, ErrorKind::InvalidData};
+use std::io::{Result, Error, ErrorKind::InvalidData, Cursor, Read, Seek, SeekFrom};
 use std::os::unix::prelude::FileExt;
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Segment{
-	pub allocated_size:u64,
-	pub used_size:u64,
+	pub allocated_size:usize,
+	pub used_size:usize,
 	pub pos:u64,
 	pub block:SegmentBlock,
 }
@@ -17,31 +17,39 @@ pub struct Segment{
 impl Segment{
 	pub fn new(file:&Arc<dyn FileExt>,pos:u64) -> Result<Self>{
 		let endianess = &Endian::Little;
-		let mut buffer=VecDeque::<u8>::from([0;1024]);
-		file.read_exact_at(buffer.as_mut_slices().0,pos)?;
+
+		// prepare and read one k for now
+		let mut buffer=Vec::<u8>::from([0;1024]);
+		file.read_exact_at(buffer.as_mut_slice(),pos)?;
+		let mut buffer=Cursor::new(buffer);
+		// get header from there
 		let id= buffer.get_ascii::<16>()?;
 		let allocated_size = buffer.get_scalar(endianess)?;
 		let used_size = buffer.get_scalar(endianess)?;
 		let allocated_size = if allocated_size == 0 {used_size} else {allocated_size};
-		let already_red = 1024-buffer.as_slices().0.len();
+
+		// now that we know the segments size we go back an resize the buffer
+		let mut buffer= buffer.into_inner();
+		buffer.resize(allocated_size,0);
+		// ad read the remaining data, if there are some
 		if allocated_size > 1024 {
-			let mut remain = vec![0;allocated_size as usize-already_red];
-			file.read_exact_at(remain.as_mut_slice(),pos+already_red as u64)?;
-			buffer.append(&mut remain.into())
-		} else {
-			buffer.truncate(allocated_size as usize);
+			file.read_exact_at(buffer.split_at_mut(1024).1,pos+1024)?;
 		}
+		// ok now put it back into Cursor
+		let mut buffer = Cursor::new(buffer);
+		buffer.seek(SeekFrom::Start(32)).unwrap();//and skip the header, we had that already
 
 		let s = Segment{
-			pos, allocated_size,
+			pos,
+			allocated_size,
 			used_size: {if used_size==0 {allocated_size} else {used_size}},
 			block: match id.as_str() {
 				"ZISRAWFILE" => SegmentBlock::FileHeader(buffer.get_scalar(endianess)?),
 				"ZISRAWATTDIR" => SegmentBlock::AttachmentDirectory(buffer.get_scalar(endianess)?),
 				"ZISRAWMETADATA" => SegmentBlock::Metadata(buffer.get_scalar(endianess)?),
-				// "ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(buffer.get_scalar(endianess)?),
+				"ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(SubBlock::new(&mut buffer,file,pos)?),
 				"ZISRAWDIRECTORY" => SegmentBlock::Directory(buffer.get_scalar(endianess)?),
-				// "ZISRAWATTACH" => SegmentBlock::Attachment(buffer.get_scalar(endianess)?),
+				"ZISRAWATTACH" => SegmentBlock::Attachment(Attachment::new(&mut buffer,file, pos)?),
 				_ => SegmentBlock::DELETED
 			}
 		};

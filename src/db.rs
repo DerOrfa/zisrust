@@ -68,8 +68,9 @@ impl DB {
 					.get_text().unwrap();
 			let primary_file_guid = if hd.PrimaryFileGuid == hd.FileGuid { None } else { Some(hd.PrimaryFileGuid.to_string()) };
 
-			let thumbnail = hd.get_thumbnail(file)?;
-			let thumbnail_type = thumbnail.as_ref().map(|t|&t.Entry.ContentFileType);
+			let mut thumbnail = hd.get_thumbnail(file)?;
+			let thumbnail_type = thumbnail.as_ref().map(|t|t.Entry.ContentFileType.clone());
+			let thumbnail_data= thumbnail.as_mut().map(|t|t.Data.get());
 
 			self.conn.execute(
 				"\

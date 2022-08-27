@@ -3,17 +3,13 @@
 use std::collections::VecDeque;
 use crate::io::{FileRead, FileGet, Endian, DataFromFile, basic::Cached};
 use crate::io::zisraw::zisraw_structs::*;
-use std::io::{Read, ErrorKind::InvalidData, Error, Result};
+use std::io::{Read, ErrorKind::InvalidData, Error, Result, Seek, SeekFrom};
 use euclid::Rect;
 use xmltree::Element;
 use crate::pyramid;
 use super::ZisrawInterface;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
-
-fn skip<T:Read>(file:&mut T, bytes:u64)-> std::io::Result<u64>{
-	std::io::copy(&mut file.by_ref().take(bytes), &mut std::io::sink())
-}
 
 pub fn parse_xml(source:&String) ->Element{
 	Element::parse(source.as_bytes()).unwrap()
@@ -72,20 +68,22 @@ impl<T: Read> FileRead<T> for Metadata{
 }
 
 impl SubBlock{
-	fn new(buffer: &mut VecDeque<u8>, file:&Arc<dyn FileExt>) -> Result<Self> {
+	pub fn new<F:Read+Seek>(buffer: &mut F, file:&Arc<dyn FileExt>, offset:u64) -> Result<Self> {
 		let endianess = &Endian::Little;
-		let skip_to= buffer.as_slices().0.len()+256;
+		let skip_to= buffer.stream_position().unwrap()+256;
 		let metadata_size:u32 = buffer.get_scalar(endianess)?;
 		let attachment_size:u32= buffer.get_scalar(endianess)?;
 		let data_size:u64 = buffer.get_scalar(endianess)?;
 		let Entry = buffer.get_scalar(endianess)?;
 
-		let current_pos= buffer.as_slices().0.len();
-		if skip_to>current_pos{skip(buffer, (skip_to-current_pos) as u64)?;}
+		let current_pos= buffer.stream_position().unwrap();
+		if skip_to>current_pos{
+			buffer.seek(SeekFrom::Start(skip_to)).unwrap();
+		}
 		let metadata_xml = buffer.get_utf8(metadata_size as u64)?;
 		let Metadata = Cached::new(metadata_xml, parse_xml);
 
-		let current_pos = buffer.as_slices().0.len() as u64;
+		let current_pos = offset+buffer.stream_position().unwrap();
 		let Data = DataFromFile::new(file, current_pos, data_size as usize);
 
 		let Attachment:Option<DataFromFile> =
@@ -189,13 +187,13 @@ impl Directory {
 }
 
 impl Attachment{
-	fn new(buffer: &mut VecDeque<u8>, file:&Arc<dyn FileExt>) -> Result<Self> {
+	pub fn new<F:Read>(buffer: &mut F, file:&Arc<dyn FileExt>, offset:u64) -> Result<Self> {
 		let endianess= &Endian::Little;
 		let size:u32 = buffer.get_scalar(endianess)?;
 		skip(buffer,12)?;
 		let Entry = buffer.get_scalar(endianess)?;
-		let data_pos= buffer.as_slices().0.len() + 112;
-		let Data = DataFromFile::new(file,data_pos as u64,size as usize);
+		let data_pos= buffer.as_slices().1.len() + 112;
+		let Data = DataFromFile::new(file,offset+data_pos as u64,size as usize);
 
 		Ok(Attachment{Entry,Data})
 	}
