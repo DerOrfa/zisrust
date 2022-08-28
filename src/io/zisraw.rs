@@ -3,12 +3,12 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::iter::Iterator;
-use std::io::{Error, ErrorKind::InvalidData, Result};
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use crate::utils::XmlUtil;
 use uom::si::{f64::Length,length::meter};
 use crate::io::zisraw::zisraw_structs::Attachment;
+use crate::{Error, Result};
 
 mod zisraw_impl;
 pub mod zisraw_structs;
@@ -17,7 +17,7 @@ pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<zisraw_structs::FileHea
 	let s = zisraw_structs::Segment::new(file, 0)?;
 	match s.block {
 		zisraw_structs::SegmentBlock::FileHeader(hd) => Ok(hd),
-		_ => Err(Error::new(InvalidData,"Unexpected block when looking for header"))
+		_ => Err(Error::from("Unexpected block when looking for header"))
 	}
 }
 
@@ -104,7 +104,7 @@ pub trait ZisrawInterface{
 			let att = zisraw_structs::Segment::new(file,thumbnail.unwrap().FilePosition)?;
 			let att= match att.block{
 				zisraw_structs::SegmentBlock::Attachment(a) => a,
-				_ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,"Unexpected block when looking for attachment"))
+				_ => return Err(Error::from("Unexpected block when looking for attachment"))
 			};
 			Ok(Some(att))
 		} else {Ok(None)}

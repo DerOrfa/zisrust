@@ -1,7 +1,8 @@
 #![allow(non_snake_case)]
 use crate::io::{FileRead, FileGet, Endian, DataFromFile, basic::Cached};
 use crate::io::zisraw::zisraw_structs::*;
-use std::io::{Read, ErrorKind::InvalidData, Error, Result, Seek, SeekFrom};
+use crate::{Error, Result};
+use std::io::{Read, Seek, SeekFrom};
 use euclid::Rect;
 use xmltree::Element;
 use crate::pyramid;
@@ -198,21 +199,21 @@ impl ZisrawInterface for FileHeader{
 		let s = Segment::new(file, self.MetadataPosition)?;
 		match s.block {
 			SegmentBlock::Metadata(d) => Ok(d),
-			_ => Err(Error::new(InvalidData,"Unexpected block when looking for metadata"))
+			_ => Err(Error::from("Unexpected block when looking for metadata"))
 		}
 	}
 	fn get_directory(&self,file:&Arc<dyn FileExt>) -> Result<Directory>{
 		let s:Segment = Segment::new(file, self.DirectoryPosition)?;
 		match s.block {
 			SegmentBlock::Directory(d) => Ok(d),
-			_ => Err(Error::new(InvalidData,"Unexpected block when looking for directory"))
+			_ => Err(Error::from("Unexpected block when looking for directory"))
 		}
 	}
 	fn get_attachments(&self,file:&Arc<dyn FileExt>)-> Result<Vec<AttachmentEntryA1>>{
 		let s:Segment = Segment::new(file, self.AttachmentDirectoryPosition)?;
 		let attachments= match s.block {
 			SegmentBlock::AttachmentDirectory(d) => Ok(d),
-			_ => Err(Error::new(InvalidData,"Unexpected block when looking for directory"))
+			_ => Err(Error::from("Unexpected block when looking for attachments"))
 		}?;
 		Ok(attachments.Entries)
 	}

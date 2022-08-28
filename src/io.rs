@@ -1,9 +1,10 @@
-use std::io::{Read, Result, Error};
+use std::io::Read;
 use crate::io::basic::Cached;
 use std::ffi::CStr;
-use std::io::ErrorKind::InvalidInput;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
+use crate::Error::Own;
+use crate::Result;
 
 mod basic;
 pub mod zisraw;
@@ -30,7 +31,7 @@ pub trait FileGet<T:Read> {
 		// todo replace with CStr::from_bytes_until_nul once its stable
 		match unsafe{CStr::from_bytes_with_nul_unchecked(&bytes)}.to_str(){
 			Ok(s) => Ok(String::from(s.trim_end_matches('\0'))),
-			Err(e) => Err(Error::new(InvalidInput,format!("Failed to read bytes {:?} as utf8-string ({})",bytes,e)))
+			Err(e) => Err(Own(format!("Failed to read bytes {:?} as utf8-string ({})",bytes,e)))
 		}
 	}
 	fn get_vec<R:FileRead<T>>(&mut self, len: usize, endianess: &Endian) -> Result<Vec<R>> {

@@ -10,7 +10,9 @@ use crate::db::RegisterSuccess::{FileExists, ImageExists, Inserted};
 use crate::io::zisraw;
 use crate::io::zisraw::{zisraw_structs,ZisrawInterface};
 use crate::utils::XmlUtil;
-use crate::ImageInfo;
+use crate::{Result,ImageInfo};
+use crate::Error::Own;
+
 
 const IMAGE_TABLE_CREATE: &'static str =
 	r#"create table if not exists images (
@@ -37,19 +39,21 @@ pub enum RegisterSuccess{
 	ImageExists(Vec<PathBuf>),
 	FileExists
 }
-type RegisterError = Box<dyn std::error::Error>;
-pub type RegisterResult = Result<RegisterSuccess,RegisterError>;
 
 pub struct DB {
 	conn:Connection
 }
 
-fn guid_from_string(s:String)->Result<Uuid,uuid::Error>{
+fn guid_from_string(s:String)->Result<Uuid>{
 	Uuid::parse_str(s.as_str())
+		.or_else(|e|Err(Own(format!("Failed to parse {s} as uuid ({e})"))))
 }
 
-fn guid_from_maybe_string(s:Option<String>)->Result<Option<Uuid>,uuid::Error>{
-	s.map(|x:String|Uuid::parse_str(x.as_str())).transpose()
+fn guid_from_maybe_string(s:Option<String>)->Result<Option<Uuid>>{
+	s.clone()
+		.map(|x:String|Uuid::parse_str(x.as_str()))
+		.transpose()
+		.or_else(|e|Err(Own(format!("Failed to parse {} as uuid ({e})",s.unwrap()))))
 }
 
 impl DB {
@@ -61,7 +65,7 @@ impl DB {
 		self.conn.prepare("SELECT filename FROM files WHERE filename=?")?
 			.exists([filename.to_str().unwrap()])
 	}
-	fn register_image(&self,hd:&zisraw_structs::FileHeader, file:&Arc<dyn FileExt>) -> RegisterResult{
+	fn register_image(&self,hd:&zisraw_structs::FileHeader, file:&Arc<dyn FileExt>) -> Result<RegisterSuccess>{
 		if !self.has_image(&hd.FileGuid)?
 		{ // image is not yet known, register it
 			let mut metadata = hd.get_metadata(file)?;
@@ -103,9 +107,10 @@ impl DB {
 			Ok(ImageExists(existing))
 		}
 	}
-	pub fn query_images(&self,where_clause:Option<String>) -> rusqlite::Result<Vec<ImageInfo>>{
+	pub fn query_images(&self,where_clause:Option<String>) -> Result<Vec<ImageInfo>>{
 		let mut stmt= self.conn
 				.prepare("SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images")?;
+		// todo implement proper error handling (right now we simply ignore rows that raised errors
 		let rows = stmt.query_map([],|r| {
 			let guid = guid_from_string(r.get(0)?).unwrap_or_default();
 			Ok(ImageInfo {
@@ -133,7 +138,7 @@ impl DB {
 				row.get(0).and_then(|v: String| Ok(PathBuf::from(v)))
 			)?.collect()
 	}
-	pub fn register_file(&self, filename:&PathBuf) -> RegisterResult{
+	pub fn register_file(&self, filename:&PathBuf) -> Result<RegisterSuccess>{
 		if self.has_file(&filename)?{
 			return Ok(FileExists);//file is already registered
 		}

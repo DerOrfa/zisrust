@@ -1,9 +1,10 @@
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
-use std::io::{Read, Result};
+use std::io::Read;
 use std::time::Instant;
 use crate::io::FileGet;
 use super::{FileRead, Endian};
+use crate::Result;
 
 trait Integer{
 	fn swap_bytes(self) -> Self;

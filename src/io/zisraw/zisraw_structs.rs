@@ -1,9 +1,10 @@
 use uuid::Uuid;
 use crate::io::{DataFromFile, Endian, FileGet};
 use xmltree;
-use std::io::{Result, Error, ErrorKind::InvalidData, Cursor, Seek, SeekFrom};
+use std::io::{Cursor, Seek, SeekFrom};
 use std::os::unix::prelude::FileExt;
 use std::sync::Arc;
+use crate::{Error, Result};
 
 #[derive(Debug)]
 pub struct Segment{
@@ -105,7 +106,7 @@ impl Metadata {
 	pub fn as_tree(&mut self) -> Result<xmltree::Element> {
 		self.cache.get()
 			.get_child("Metadata")
-			.ok_or(Error::new(InvalidData,"\"Metadata\" missing in xml stream"))
+			.ok_or(Error::from("\"Metadata\" missing in xml stream"))
 			.cloned()
 	}
 }
