@@ -107,9 +107,13 @@ impl DB {
 			Ok(ImageExists(existing))
 		}
 	}
-	pub fn query_images(&self,where_clause:Option<String>) -> Result<Vec<ImageInfo>>{
-		let mut stmt= self.conn
-				.prepare("SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images")?;
+	pub fn query_images(&self,where_clause:Option<String>) -> Result<Vec<ImageInfo>>
+	{
+		let query = match where_clause{
+			None => "SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images".to_string(),
+			Some(c) => format!("SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images WHERE {}",c)
+		};
+		let mut stmt= self.conn.prepare(query.as_str())?;
 		// todo implement proper error handling (right now we simply ignore rows that raised errors
 		let rows = stmt.query_map([],|r| {
 			let guid = guid_from_string(r.get(0)?).unwrap_or_default();

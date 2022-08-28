@@ -1,9 +1,3 @@
-//! Run with
-//!
-//! ```not_rust
-//! cd examples && cargo run -p example-readme
-//! ```
-
 use axum::{
 	http::StatusCode,
 	response::IntoResponse,
@@ -11,12 +5,16 @@ use axum::{
 	Json, Router,
 	extract::Extension
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::str::FromStr;
 use argh::FromArgs;
-use zisrust::db::DB;
+use axum::extract::Path;
+use axum::response::Response;
+use uuid::Uuid;
+use zisrust::db::{DB, RegisterSuccess};
 use zisrust::ImageInfo;
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -25,6 +23,10 @@ struct Cli {
 	#[argh(option, short='d', default = "PathBuf::from(\"czi_registry.db\")")]
 	/// path to the database file
 	dbfile: PathBuf,
+
+	#[argh(option, short='i', default = "SocketAddr::from(([127,0,0,1],3000))")]
+	/// ip adress to listen at
+	address:SocketAddr
 }
 
 #[tokio::main]
@@ -33,6 +35,7 @@ async fn main() {
 	// tracing_subscriber::fmt::init();
 
 	let cli: Cli = argh::from_env();
+	println!("opening database {}",cli.dbfile.to_string_lossy());
 	let db=DB::new(&cli.dbfile).unwrap();
 	let state = Arc::new(Mutex::new(db));
 
@@ -42,22 +45,20 @@ async fn main() {
 		.route("/", get(root))
 		// `POST /users` goes to `create_user`
 		.route("/images", get(get_images))
+		.route("/images", post(register_image))
+		.route("/images/:uuid/xml", get(get_image_xml))
+		.route("/images/:uuid/thumbnail", get(get_image_thumbnail))
 		.layer(Extension(state))
 		;
 
 	// run our app with hyper
 	// `axum::Server` is a re-export of `hyper::Server`
-	let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 	// tracing::debug!("listening on {}", addr);
-	axum::Server::bind(&addr)
+	println!("starting server at {}",cli.address);
+	axum::Server::bind(&cli.address)
 		.serve(app.into_make_service())
 		.await
 		.unwrap();
-}
-
-#[derive(Serialize)]
-struct ServerError{
-	error:String
 }
 
 // basic handler that responds with a static string
@@ -65,16 +66,53 @@ async fn root() -> &'static str {
 	"Hello, World!"
 }
 
-#[axum_macros::debug_handler]
-async fn get_images(
-	Extension(db): Extension<Arc<Mutex<DB>>>
-) -> Json<Vec<ImageInfo>> {
-	// match db.query_images(None){
-	// 	Ok(images) =>
-	// 		return (StatusCode::OK, Json(images)),
-	// 	Err(e) =>
-	// 		return (StatusCode::INTERNAL_SERVER_ERROR,Json(ServerError{error:e.to_string()}))
-	// }
-	let images=db.lock().unwrap().query_images(None).unwrap();
-	Json(images)
+async fn get_images(Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+	match db.lock().unwrap().query_images(None){
+		Ok(images) => (StatusCode::OK,Json(images)).into_response(),
+		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,Json(e)).into_response()
+	}
+}
+
+async fn get_image(Path(id):Path<Uuid>, Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+	match db.lock().unwrap().query_images(Some(format!("guid==\"{id}\""))){
+		Ok(images) => {
+			match images.first() {
+				None => (StatusCode::NOT_FOUND).into_response(),
+				Some(image) => (StatusCode::INTERNAL_SERVER_ERROR,Json(image)).into_response()
+			}
+		},
+		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,Json(e)).into_response()
+	}
+}
+
+#[derive(Deserialize)]
+struct RegisterImagePayload{filename:PathBuf}
+async fn register_image(Json(payload):Json<RegisterImagePayload>, Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+	if ! payload.filename.exists(){
+		return StatusCode::NOT_FOUND.into_response();
+	}
+	if ! payload.filename.is_file(){
+		return StatusCode::NOT_ACCEPTABLE.into_response()
+	}
+	// todo handle missing read access
+	match db.lock().unwrap().register_file(&payload.filename){
+		Ok(r) => {
+			match r {
+				RegisterSuccess::Inserted => StatusCode::CREATED.into_response(),
+				RegisterSuccess::ImageExists(e) => (StatusCode::ACCEPTED,Json(e)).into_response(),
+				RegisterSuccess::FileExists => StatusCode::ALREADY_REPORTED.into_response()
+			}
+
+		}
+		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,Json(e)).into_response()
+	}
+}
+
+
+async fn get_image_xml(Path(id):Path<Uuid>,Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+	todo!()
+}
+
+async fn get_image_thumbnail(Path(id):Path<Uuid>,Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+	todo!()
 }

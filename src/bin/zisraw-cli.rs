@@ -62,8 +62,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 		Commands::Query(l) => {
 			let images=database.query_images(l.where_clause)?;
-
 			if images.is_empty(){return Ok(())}
+
 			if l.json{
 				println!("{}",serde_json::to_string_pretty(&images)?);
 			} else {
