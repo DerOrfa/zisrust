@@ -37,7 +37,7 @@ trait Integer{
 pub struct Cached<S,T>{
 	store:Option<T>,
 	pub source:S,
-	producer:fn(&S)->T,
+	producer:fn(&S)->Result<T>,
 	last_use:Instant
 }
 
@@ -49,16 +49,21 @@ impl<S,T> Debug for Cached<S,T> {
 }
 
 impl<S,T> Cached<S,T> {
-	pub fn new(source:S,producer:fn(&S)->T) -> Cached<S,T>{
+	pub fn new(source:S,producer:fn(&S)->Result<T>) -> Cached<S,T>{
 		Cached{
 			producer, source,
 			store:None,
-			last_use: std::time::Instant::now()
+			last_use: Instant::now()
 		}
 	}
-	pub fn get(&mut self)->&T{
-		self.last_use= std::time::Instant::now();
-		self.store.get_or_insert_with(||(self.producer)(&self.source))
+	pub fn get(&mut self)->Result<&T>{
+		self.last_use= Instant::now();
+		if self.store.is_none() { // try to produce
+			let prod= (self.producer)(&self.source)?;
+			Ok(self.store.insert(prod))
+		} else {
+			Ok(self.store.as_ref().unwrap())
+		}
 	}
 }
 

@@ -84,7 +84,10 @@ impl DB {
 
 			let mut thumbnail = hd.get_thumbnail(file)?;
 			let thumbnail_type = thumbnail.as_ref().map(|t|t.Entry.ContentFileType.clone());
-			let thumbnail_data= thumbnail.as_mut().map(|t|t.Data.get());
+			let thumbnail_data= match thumbnail.as_mut() {
+				Some(a) => Some(a.Data.get()?),
+				_ => None
+			};
 
 			self.conn.execute(
 				"\
