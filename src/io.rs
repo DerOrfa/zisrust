@@ -1,13 +1,12 @@
 use std::io::Read;
 use crate::io::basic::Cached;
-use std::ffi::CStr;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
-use crate::Error::Own;
 use crate::Result;
 
 mod basic;
 pub mod zisraw;
+mod blockbuf;
 
 pub enum Endian{Big,Little}
 
@@ -23,23 +22,23 @@ pub trait FileRead<T:Read> {
 /// That means not all structures cen be "gotten" from any implementors of the `Read` and `Seek`.
 ///
 /// Please note that each reading operation is done at the current reading position. You might want to do seek before.
-pub trait FileGet<T:Read> {
-	fn get_scalar<R:FileRead<T>> (&mut self, endianess: &Endian) ->Result<R>;
-	fn get_utf8(&mut self, len:u64) -> Result<String>;
-	fn get_ascii<const LEN: usize>(&mut self) -> Result<String> {
-		let bytes:[u8;LEN]=self.get_scalar(&Endian::Little)?;//endinaness is irrelevant here
-		// todo replace with CStr::from_bytes_until_nul once its stable
-		match unsafe{CStr::from_bytes_with_nul_unchecked(&bytes)}.to_str(){
-			Ok(s) => Ok(String::from(s.trim_end_matches('\0'))),
-			Err(e) => Err(Own(format!("Failed to read bytes {:?} as utf8-string ({})",bytes,e)))
-		}
-	}
-	fn get_vec<R:FileRead<T>>(&mut self, len: usize, endianess: &Endian) -> Result<Vec<R>> {
-		std::iter::from_fn(|| Some(self.get_scalar(endianess)))
-			.take(len)
-			.collect()
-	}
-}
+// pub trait FileGet<T:Read> {
+// 	fn get_scalar<R:FileRead<T>> (&mut self, endianess: &Endian) ->Result<R>;
+// 	fn get_utf8(&mut self, len:u64) -> Result<String>;
+// 	fn get_ascii<const LEN: usize>(&mut self) -> Result<String> {
+// 		let bytes:[u8;LEN]=self.get_scalar(&Endian::Little)?;//endinaness is irrelevant here
+// 		// todo replace with CStr::from_bytes_until_nul once its stable
+// 		match unsafe{CStr::from_bytes_with_nul_unchecked(&bytes)}.to_str(){
+// 			Ok(s) => Ok(String::from(s.trim_end_matches('\0'))),
+// 			Err(e) => Err(Own(format!("Failed to read bytes {:?} as utf8-string ({})",bytes,e)))
+// 		}
+// 	}
+// 	fn get_vec<R:FileRead<T>>(&mut self, len: usize, endianess: &Endian) -> Result<Vec<R>> {
+// 		std::iter::from_fn(|| Some(self.get_scalar(endianess)))
+// 			.take(len)
+// 			.collect()
+// 	}
+// }
 
 #[derive(Debug)]
 pub struct DataFromFile{

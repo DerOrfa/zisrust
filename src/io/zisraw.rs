@@ -12,11 +12,12 @@ use crate::{Error, Result};
 
 mod zisraw_impl;
 pub mod zisraw_structs;
+mod segment;
 
 pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<zisraw_structs::FileHeader>{
-	let s = zisraw_structs::Segment::new(file, 0)?;
+	let s = segment::Segment::new(file, 0)?;
 	match s.block {
-		zisraw_structs::SegmentBlock::FileHeader(hd) => Ok(hd),
+		segment::SegmentBlock::FileHeader(hd) => Ok(hd),
 		_ => Err(Error::from("Unexpected block when looking for header"))
 	}
 }
@@ -101,9 +102,9 @@ pub trait ZisrawInterface{
 			.next();
 
 		if thumbnail.is_some(){
-			let att = zisraw_structs::Segment::new(file,thumbnail.unwrap().FilePosition)?;
+			let att = segment::Segment::new(file,thumbnail.unwrap().FilePosition)?;
 			let att= match att.block{
-				zisraw_structs::SegmentBlock::Attachment(a) => a,
+				segment::SegmentBlock::Attachment(a) => a,
 				_ => return Err(Error::from("Unexpected block when looking for attachment"))
 			};
 			Ok(Some(att))

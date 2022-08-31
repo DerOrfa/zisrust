@@ -1,7 +1,9 @@
+mod cli;
+
 use std::error::Error;
 use std::path::PathBuf;
 use argh::FromArgs;
-use zisrust::db::{DB, RegisterSuccess};
+use zisrust::db::DB;
 
 #[macro_use] extern crate prettytable;
 
@@ -21,6 +23,7 @@ struct Cli {
 enum Commands {
 	Register(Register),
 	Query(Query),
+	Dump(Dump)
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -44,44 +47,31 @@ struct Query {
 	json:bool
 }
 
+#[derive(FromArgs, PartialEq, Debug)]
+/// print out metadata of a file
+#[argh(subcommand, name = "dump")]
+struct Dump {
+	#[argh(positional)]
+	/// czi files to "dump"
+	file:PathBuf,
+	/// an optional file to write the xmal data to
+	#[argh(option,short='x')]
+	xmlfile:Option<PathBuf>
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
 
 	let cli: Cli = argh::from_env();
-
 	let database = DB::new(&cli.dbfile)?;
 
 	match cli.nested {
 		Commands::Register(r) => {
 			for fname in r.files {
-				match database.register_file(&fname)?{
-					RegisterSuccess::Inserted => {}
-					RegisterSuccess::ImageExists(v) => println!("image in {} is already registered, known filenames are {v:?}",fname.to_string_lossy()),
-					RegisterSuccess::FileExists => println!("{} is already registered",fname.to_string_lossy())
-				};
+				cli::register(&database, &fname)?;
 			}
 		}
-		Commands::Query(l) => {
-			let images=database.query_images(l.where_clause)?;
-			if images.is_empty(){return Ok(())}
-
-			if l.json{
-				println!("{}",serde_json::to_string_pretty(&images)?);
-			} else {
-				let mut table = prettytable::Table::new();
-				table.add_row(row!["acquisition time","guid","parents guid","original path","file part","known files"]);
-				for r in database.query_images(None)? {
-					table.add_row(row![
-						r.timestamp.to_string(),
-						r.guid.to_string(),
-						r.parent_guid.map_or("None".to_string(),|g|g.to_string()),
-						r.orig_path.to_string_lossy().to_string(),
-						r.file_part.to_string(),
-						format!("{} copies",r.filenames.len())
-					]);
-				}
-				table.printstd();
-			}
-		}
+		Commands::Query(l) => cli::query(database, l.where_clause, l.json)?,
+		Commands::Dump(d)  => cli::dump(d.file, d.xmlfile )?
 	}
 	Ok(())
 }
