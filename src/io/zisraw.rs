@@ -7,14 +7,14 @@ use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use crate::utils::XmlUtil;
 use uom::si::{f64::Length,length::meter};
-use crate::io::zisraw::zisraw_structs::Attachment;
+use crate::io::zisraw::structs::Attachment;
 use crate::{Error, Result};
 
-mod zisraw_impl;
-pub mod zisraw_structs;
+mod r#impl;
+pub mod structs;
 mod segment;
 
-pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<zisraw_structs::FileHeader>{
+pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<structs::FileHeader>{
 	let s = segment::Segment::new(file, 0)?;
 	match s.block {
 		segment::SegmentBlock::FileHeader(hd) => Ok(hd),
@@ -40,9 +40,9 @@ pub struct ImageInfo{
 }
 
 pub trait ZisrawInterface{
-	fn get_metadata(&self,file:&Arc<dyn FileExt>) -> Result<zisraw_structs::Metadata>;
-	fn get_directory(&self,file:&Arc<dyn FileExt>) -> Result<zisraw_structs::Directory>;
-	fn get_attachments(&self,file:&Arc<dyn FileExt>)-> Result<Vec<zisraw_structs::AttachmentEntryA1>>;
+	fn get_metadata(&self,file:&Arc<dyn FileExt>) -> Result<structs::Metadata>;
+	fn get_directory(&self,file:&Arc<dyn FileExt>) -> Result<structs::Directory>;
+	fn get_attachments(&self,file:&Arc<dyn FileExt>)-> Result<Vec<structs::AttachmentEntryA1>>;
 
 	fn get_metadata_xml(&self,file:&Arc<dyn FileExt>) -> Result<String>{
 		let e = self.get_metadata(file)?;

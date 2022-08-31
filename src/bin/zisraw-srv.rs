@@ -9,7 +9,6 @@ use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::str::FromStr;
 use argh::FromArgs;
 use axum::extract::Path;
 use axum::response::Response;

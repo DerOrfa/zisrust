@@ -5,7 +5,7 @@ use crate::pyramid;
 use super::ZisrawInterface;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
-use super::zisraw_structs::*;
+use super::structs::*;
 use super::segment::{Segment,SegmentBlock};
 
 impl pyramid::Tile for DirectoryEntryDV{

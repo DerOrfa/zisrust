@@ -52,7 +52,7 @@ pub fn dump(fname:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>
 		std::fs::write(xmlfile,metadata.cache.source.clone())?;
 	}
 
-	let mut metadata_tree = metadata.as_tree();
+	let metadata_tree = metadata.as_tree();
 
 	if let Ok(metadata_tree) = metadata_tree {
 		let mut metadata_tree = metadata_tree;
@@ -61,10 +61,13 @@ pub fn dump(fname:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>
 			.take_child("Image").unwrap();
 		let acquisition_timestamp: chrono::DateTime<chrono::Local> =
 			image_branch.child_into("AcquisitionDateAndTime")?;
+		println!("acquisition time: {acquisition_timestamp}");
 
 		let org_filename =
 			metadata_tree.drill_down(&["Experiment", "ImageName"])?
-				.get_text().unwrap();
+				.get_text().ok_or(zisrust::Error::from("failed get original filename from metadata"))?;
+		println!("original filename: {org_filename}");
+
 	} else {
 		println!("{}",metadata_tree.unwrap_err());
 		if xmlfile.is_none() {

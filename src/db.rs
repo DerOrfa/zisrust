@@ -8,7 +8,7 @@ use uuid::Uuid;
 use uuid;
 use crate::db::RegisterSuccess::{FileExists, ImageExists, Inserted};
 use crate::io::zisraw;
-use crate::io::zisraw::{zisraw_structs,ZisrawInterface};
+use crate::io::zisraw::{structs, ZisrawInterface};
 use crate::utils::XmlUtil;
 use crate::{Result,ImageInfo};
 use crate::Error::Own;
@@ -65,7 +65,7 @@ impl DB {
 		self.conn.prepare("SELECT filename FROM files WHERE filename=?")?
 			.exists([filename.to_str().unwrap()])
 	}
-	fn register_image(&self,hd:&zisraw_structs::FileHeader, file:&Arc<dyn FileExt>) -> Result<RegisterSuccess>{
+	fn register_image(&self, hd:&structs::FileHeader, file:&Arc<dyn FileExt>) -> Result<RegisterSuccess>{
 		if !self.has_image(&hd.FileGuid)?
 		{ // image is not yet known, register it
 			let mut metadata = hd.get_metadata(file)?;
