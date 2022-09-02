@@ -1,15 +1,13 @@
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
-use crate::io::DataFromFile;
-use crate::Result;
-use crate::io::Endian;
+use crate::{DataFromFile,Endian,Result};
 use std::mem::size_of;
 use std::fmt::{Debug, Formatter};
 use std::vec::Drain;
 use bytemuck::Pod;
 use crate::Error::Own;
 use crate::Error;
-use crate::io::basic::ByteSwapper;
+use crate::basic::ByteSwapper;
 
 pub struct BlockBuf{
 	source:Arc<dyn FileExt>,
