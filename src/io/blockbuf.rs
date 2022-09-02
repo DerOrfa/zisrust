@@ -4,7 +4,7 @@ use crate::io::DataFromFile;
 use crate::Result;
 use crate::io::Endian;
 use std::mem::size_of;
-use std::ffi::CStr;
+use std::fmt::{Debug, Formatter};
 use std::vec::Drain;
 use bytemuck::Pod;
 use crate::Error::Own;
@@ -67,19 +67,58 @@ impl BlockBuf {
 	///
 	/// - newpos is meant from the beginning of the buffer (aka the position it was originally created at)
 	/// - trying to skip to a position that was already drained will return an error and has no other effect
-	pub fn skip_to(&mut self,newpos:u64) -> Result<()>{
+	pub fn skip_to(&mut self,newpos:u64) -> Result<&mut BlockBuf>{
 		if newpos < self.drained as u64{
 			Err(Error::from("Cannot skip backwards"))
 		} else {
 			self.drain((newpos as usize - self.drained) as usize);
-			Ok(())
+			Ok(self)
+		}
+	}
+	/// splices of a block buffer with the given size that starts at the current position
+	///
+	/// - drains all bytes from the this buffer, you'll have to take them back
+	/// - clones the source file object
+	fn splice_unlimited(&mut self) -> BlockBuf{
+		let mut buffer:Vec<u8> = vec![];
+		buffer.append(&mut self.buffer);
+		BlockBuf{
+			source: self.source.clone(),
+			start_in_file: self.start_in_file+self.drained as u64,
+			drained: 0,
+			buffer,
+			endianess: self.endianess.clone()
+		}
+	}
+	/// splices of a block buffer with the given size that starts at the current position
+	///
+	/// - drains size bytes from the this buffer
+	/// - clones the source file object
+	pub fn splice(&mut self, size:usize) -> BlockBuf{
+		BlockBuf{
+			source: self.source.clone(),
+			start_in_file: self.start_in_file+self.drained as u64,
+			drained: 0,
+			buffer: self.drain(size).collect(),
+			endianess: self.endianess.clone()
+		}
+	}
+	/// splices of a block buffer with the remaining data from this buffer
+	///
+	/// - invalidates this buffer
+	/// - equivalent to resetting the starting point of this buffer to the current position
+	pub fn splice_all(self) -> BlockBuf{
+		BlockBuf{
+			start_in_file: self.start_in_file+self.drained as u64,
+			drained: 0,
+			..self
 		}
 	}
 	/// Creates a DataFromFiles at the current position with the given size.
 	///
 	/// - drains size bytes from the buffer.
 	pub fn get_cached_data(&mut self,size:usize) -> DataFromFile{
-		let ret= DataFromFile::new(&self.source,self.drained as u64,size);
+		let ret= DataFromFile::new(&self.source,self.start_in_file+self.drained as u64,size);
 		self.drain(size);
 		ret
 	}
@@ -118,14 +157,49 @@ impl BlockBuf {
 	}
 	/// Drain given amount of bytes and try to interpret them as cstring.
 	///
-	/// - always drains LEN bytes from the buffer even if it fails.
+	/// - always drains LEN bytes from the buffer even if null.
 	/// - the returned string will stop at the the first encountered null-terminator if there is any.
-	pub fn get_ascii<const LEN: usize>(&mut self) -> Result<String> {
+	pub fn get_ascii<const LEN: usize>(&mut self) -> String {
 		let drain=self.drain(LEN);
-		// todo replace with CStr::from_bytes_until_nul once its stable
-		match unsafe{CStr::from_bytes_with_nul_unchecked(drain.as_slice())}.to_str(){
-			Ok(s) => Ok(String::from(s.trim_end_matches('\0'))),
-			Err(e) => Err(Own(format!("Failed to read bytes {LEN} as utf8-string ({})",e)))
-		}
+		String::from_utf8_lossy(drain.as_slice())
+			.trim_end_matches('\0')
+			.to_string()
+	}
+	/// create an object by reading data from the buffer
+	///
+	/// Drains some data from the the buffer.
+	///
+	/// T::read is run with a spliced off buffer.
+	/// Because of that T::read will see a buffer with no drained bytes that starts from the current position.
+	pub fn read<T,E>(&mut self) -> std::result::Result<T,E> where E:std::error::Error, T:BlockRead<E>
+	{
+		let mut local = self.splice_unlimited();
+		let ret=T::read(&mut local);
+		self.drained += local.drained;//add locally drained amount to my own
+		self.buffer = local.buffer; //get back remaining bytes from the spliced off buffer
+		ret
+	}
+	/// create a vector of objects by reading all remaining data from the buffer
+	pub fn read_vec<T,E>(&mut self,len:usize) -> std::result::Result<Vec<T>,E> where E:std::error::Error, T:BlockRead<E>
+	{
+		std::iter::from_fn(||Some(self.read())).take(len).collect()
+	}
+}
+
+pub trait BlockRead<E:std::error::Error>{
+	fn read(buffer:&mut BlockBuf) -> std::result::Result<Self,E> where Self:Sized;
+}
+
+impl Debug for BlockBuf{
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let current = self.start_in_file+self.drained as u64;
+		let remaining = self.buffer.len();
+		f.debug_struct("BlockBuf")
+			.field("starts at",&self.start_in_file)
+			.field("drained",&self.drained)
+			.field("endianess",&self.endianess)
+			.field("current position in file",&current)
+			.field("remaining bytes",&remaining)
+			.finish()
 	}
 }

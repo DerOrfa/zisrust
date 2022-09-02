@@ -1,8 +1,8 @@
-use crate::io::blockbuf::BlockBuf;
+use crate::io::blockbuf::{BlockBuf, BlockRead};
 use std::sync::Arc;
 use std::os::unix::fs::FileExt;
 use crate::io::Endian::Little;
-use crate::{Result,Error::Own};
+use crate::{Result, Error::Own, Error};
 use super::structs::*;
 use uuid::Uuid;
 use xmltree::Element;
@@ -26,7 +26,7 @@ impl Segment{
 		//create buffer block beginning with the segment
 		let mut buffer=BlockBuf::new(file.clone(),pos,Little)?;// prepare and read 1k for now
 		// get header from there
-		let id= buffer.get_ascii::<16>()?;
+		let id= buffer.get_ascii::<16>();
 		let allocated_size = buffer.get_scalar();
 		let used_size = buffer.get_scalar();
 
@@ -38,12 +38,12 @@ impl Segment{
 			allocated_size,
 			used_size: {if used_size==0 {allocated_size} else {used_size}},
 			block: match id.as_str() {
-				"ZISRAWFILE" => SegmentBlock::FileHeader(SegmentData::read(&mut buffer)?),
-				"ZISRAWATTDIR" => SegmentBlock::AttachmentDirectory(SegmentData::read(&mut buffer)?),
-				"ZISRAWMETADATA" => SegmentBlock::Metadata(SegmentData::read(&mut buffer)?),
-				"ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(SegmentData::read(&mut buffer)?),
-				"ZISRAWDIRECTORY" => SegmentBlock::Directory(SegmentData::read(&mut buffer)?),
-				"ZISRAWATTACH" => SegmentBlock::Attachment(SegmentData::read(&mut buffer)?),
+				"ZISRAWFILE" => SegmentBlock::FileHeader(buffer.read()?),
+				"ZISRAWATTDIR" => SegmentBlock::AttachmentDirectory(buffer.read()?),
+				"ZISRAWMETADATA" => SegmentBlock::Metadata(buffer.read()?),
+				"ZISRAWSUBBLOCK" => SegmentBlock::ImageSubBlock(buffer.read()?),
+				"ZISRAWDIRECTORY" => SegmentBlock::Directory(buffer.read()?),
+				"ZISRAWATTACH" => SegmentBlock::Attachment(buffer.read()?),
 				_ => SegmentBlock::DELETED
 			}
 		};
@@ -71,27 +71,10 @@ pub enum SegmentBlock{
 	DELETED
 }
 
-pub trait SegmentData{
-	fn read(buffer:&mut BlockBuf) -> Result<Self> where Self : Sized;
-	fn read_vec(buffer:&mut BlockBuf, len:usize) -> Result<Vec<Self>> where Self : Sized{
-		std::iter::from_fn(||Some(Self::read(buffer))).take(len).collect()
-	}
-}
-
-impl SegmentData for Directory{
-	fn read(buffer: &mut BlockBuf) -> Result<Self> {
-		let EntryCount:i32 = buffer.get_scalar();
-		buffer.skip_to(32+128).expect("Unexpected backward skip");
-		Ok(Directory{
-			Entries: DirectoryEntryDV::read_vec(buffer,EntryCount as usize)?
-		})
-	}
-}
-
-impl SegmentData for FileHeader{
+impl BlockRead<Error> for FileHeader{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		let version = buffer.get_array();
-		buffer.skip_to(32+16)?;
+		buffer.skip_to(16)?;
 		let PrimaryFileGuid = Uuid::from_slice(buffer.drain(16).as_slice()).unwrap();//impossible to fail
 		let FileGuid = Uuid::from_slice(buffer.drain(16).as_slice()).unwrap();
 		Ok(FileHeader{
@@ -105,52 +88,24 @@ impl SegmentData for FileHeader{
 	}
 }
 
-impl SegmentData for AttachmentDirectory{
-	fn read(buffer: &mut BlockBuf) -> Result<Self> {
-		let count:u32 = buffer.get_scalar();
-		buffer.skip_to(32+256).expect("Unexpected backward skip");
-		Ok(AttachmentDirectory {
-			Entries: AttachmentEntryA1::read_vec(buffer,count as usize)?
-		})
-	}
-}
-
-impl SegmentData for AttachmentEntryA1{
-	fn read(buffer: &mut BlockBuf) -> Result<Self> {
-		let SchemaType = buffer.get_ascii::<2>()?;
-		buffer.skip_to(32+12).expect("Unexpected backward skip");
-		let FilePosition = buffer.get_scalar();
-		let FilePart = buffer.get_scalar();
-		let ContentGuid = Uuid::from_slice(buffer.drain(16).as_slice()).unwrap(); // impossible to fail
-		Ok(AttachmentEntryA1{
-			SchemaType, // todo implement support for attachments other than thumbnails
-			FilePosition, FilePart, ContentGuid,
-			ContentFileType: buffer.get_ascii::<8>().unwrap(),
-			Name: buffer.get_ascii::<80>().unwrap()
-		})
-	}
-}
-
-impl SegmentData for Metadata{
+impl BlockRead<Error> for Metadata{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		let xml_size:i32= buffer.get_scalar();
-		buffer.skip_to(32+256).expect("Unexpected backward skip");//actually there is also 4 bytes reserved for AttachmentSize, but that's "NOT USED CURRENTLY"
-		let xml_string=buffer.get_utf8(xml_size as usize)?;
+		let xml_string=buffer.skip_to(256)?.get_utf8(xml_size as usize)?;
 		Ok(Metadata{
 			cache: Cached::new(xml_string, parse_xml)
 		})
 	}
 }
 
-impl SegmentData for SubBlock{
-	fn read(buffer: &mut BlockBuf) -> Result<Self> {
+impl BlockRead<Error> for SubBlock{
+	fn read(buffer:&mut BlockBuf) -> Result<Self> {
 		let metadata_size:u32 = buffer.get_scalar();
 		let attachment_size:u32= buffer.get_scalar();
 		let data_size:u64 = buffer.get_scalar();
-		let Entry = DirectoryEntryDV::read(buffer)?;
+		let Entry = buffer.read()?;
 
-		buffer.skip_to(32+256).ok();
-
+		buffer.skip_to(256).ok();
 		let metadata_xml = buffer.get_utf8(metadata_size as usize)?;
 		let Metadata = Cached::new(metadata_xml, parse_xml);
 
@@ -166,10 +121,10 @@ impl SegmentData for SubBlock{
 	}
 }
 
-impl SegmentData for DimensionEntryDV1{
+impl BlockRead<Error> for DimensionEntryDV1{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		Ok(DimensionEntryDV1{
-			Dimension: buffer.get_ascii::<4>()?,
+			Dimension: buffer.get_ascii::<4>(),
 			Start: buffer.get_scalar(),
 			Size: buffer.get_scalar(),
 			StartCoordinate: buffer.get_scalar(),
@@ -178,30 +133,64 @@ impl SegmentData for DimensionEntryDV1{
 	}
 }
 
-impl SegmentData for DirectoryEntryDV{
-	fn read(buffer: &mut BlockBuf) -> Result<Self> {
-		let SchemaType= buffer.get_ascii::<2>()?;
+impl BlockRead<Error> for DirectoryEntryDV{
+	fn read(buffer: &mut BlockBuf) -> Result<Self> where Self: Sized {
+		let SchemaType= buffer.get_ascii::<2>();
 		let PixelType = buffer.get_scalar();
 		let FilePosition = buffer.get_scalar();
 		let FilePart = buffer.get_scalar();
 		let Compression = buffer.get_scalar();
 		let PyramidType = buffer.get_scalar();//PyramidType, and 5 reserved bytes
-		buffer.skip_to(32+28).expect("Unexpected backward skip");
-		let dimension_count:u32 = buffer.get_scalar();
-		let dimension_map = DimensionEntryDV1::read_vec(buffer,dimension_count as usize)?
-			.into_iter().map(|de|(de.Dimension.clone(),de)).collect();
+		let dimension_count:u32 = buffer.skip_to(28)?.get_scalar();
+		let dimension_map = buffer
+			.read_vec(dimension_count as usize)?
+			.into_iter()
+			.map(|de:DimensionEntryDV1|(de.Dimension.clone(),de))
+			.collect();
 		Ok(DirectoryEntryDV{SchemaType, PixelType, FilePosition, FilePart, Compression, PyramidType, dimension_map})
 	}
 }
 
-impl SegmentData for Attachment{
-	fn read(buffer: &mut BlockBuf) -> Result<Self> {
-		let data_size:u32 = buffer.get_scalar();
-		buffer.skip_to(32+16).expect("Unexpected backward skip");
-		let Entry = SegmentData::read(buffer)?;
-		buffer.skip_to(32+256).expect("Unexpected backward skip");
-		let Data = buffer.get_cached_data(data_size as usize);
-		Ok(Attachment{Entry,Data})
+impl BlockRead<Error> for Directory{
+	fn read(buffer: &mut BlockBuf) -> Result<Self> where Self: Sized {
+		let EntryCount:i32 = buffer.get_scalar();
+		Ok(Directory{
+			Entries:buffer.skip_to(128)?.read_vec(EntryCount as usize)?
+		})
 	}
 }
+
+
+impl BlockRead<Error> for Attachment{
+	fn read(buffer: &mut BlockBuf) -> Result<Self> {
+		let data_size:u32 = buffer.get_scalar();
+		Ok(Attachment{
+			Entry:buffer.skip_to(16)?.read()?,
+			Data:buffer.skip_to(256)?.get_cached_data(data_size as usize)
+		})
+	}
+}
+impl BlockRead<Error> for AttachmentEntryA1{
+	fn read(buffer: &mut BlockBuf) -> Result<Self> {
+		let SchemaType = buffer.get_ascii::<2>();
+		buffer.skip_to(12).expect("Unexpected backward skip");
+		let FilePosition=buffer.get_scalar();
+		let FilePart=buffer.get_scalar();
+		let ContentGuid=Uuid::from_slice(buffer.drain(16).as_slice()).unwrap(); // impossible to fail
+		Ok(AttachmentEntryA1{
+			SchemaType, // todo implement support for attachments other than thumbnails
+			FilePosition, FilePart,	ContentGuid,
+			ContentFileType: buffer.get_ascii::<8>(),
+			Name: buffer.get_ascii::<80>()
+		})
+	}
+}
+impl BlockRead<Error> for AttachmentDirectory{
+	fn read(buffer: &mut BlockBuf) -> Result<Self> where Self: Sized {
+		let count:u32 = buffer.get_scalar();
+		buffer.skip_to(256).expect("Unexpected backward skip");
+		Ok(AttachmentDirectory {Entries:buffer.read_vec(count as usize)?})
+	}
+}
+
 
