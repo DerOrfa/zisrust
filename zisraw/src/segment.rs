@@ -1,12 +1,12 @@
-use crate::io::blockbuf::{BlockBuf, BlockRead};
+use iobase::blockbuf::{BlockBuf, BlockRead};
 use std::sync::Arc;
 use std::os::unix::fs::FileExt;
-use crate::io::Endian::Little;
+use iobase::Endian::Little;
 use crate::{Result, Error::Own, Error};
 use super::structs::*;
 use uuid::Uuid;
 use xmltree::Element;
-use crate::io::{Cached,DataFromFile};
+use iobase::{basic::Cached,DataFromFile};
 
 pub fn parse_xml(source:&String) ->Result<Element>{
 	Element::parse(source.as_bytes())

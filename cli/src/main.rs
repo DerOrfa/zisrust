@@ -1,11 +1,7 @@
-mod cli;
-
 use std::error::Error;
 use std::path::PathBuf;
 use argh::FromArgs;
-use zisrust::db::DB;
-
-#[macro_use] extern crate prettytable;
+use db::DB;
 
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(description = "sqlite backed registry for czi files")]

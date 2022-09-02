@@ -3,9 +3,10 @@ use std::error::Error;
 use std::fs::File;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
-use zisrust::db::{DB, RegisterSuccess};
-use zisrust::io::{zisraw,zisraw::ZisrawInterface};
-use zisrust::utils::XmlUtil;
+use db::{DB, RegisterSuccess};
+use zisraw::ZisrawInterface;
+use zisraw::utils::XmlUtil;
+use prettytable::{row, Table};
 
 pub fn register(database: &DB, fname: &PathBuf) -> Result<(), Box<dyn Error>> {
 	match database.register_file(&fname)? {
@@ -23,7 +24,7 @@ pub fn query(database: DB, where_clause: Option<String>, json:bool) -> Result<()
 	if json {
 		println!("{}", serde_json::to_string_pretty(&images)?);
 	} else {
-		let mut table = prettytable::Table::new();
+		let mut table = Table::new();
 		table.add_row(row!["acquisition time","guid","parents guid","original path","file part","known files"]);
 		for r in database.query_images(None)? {
 			table.add_row(row![
@@ -65,7 +66,7 @@ pub fn dump(fname:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>
 
 		let org_filename =
 			metadata_tree.drill_down(&["Experiment", "ImageName"])?
-				.get_text().ok_or(zisrust::Error::from("failed get original filename from metadata"))?;
+				.get_text().ok_or(iobase::Error::from("failed get original filename from metadata"))?;
 		println!("original filename: {org_filename}");
 
 	} else {

@@ -1,0 +1,14 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rusqlite = { version = "0.28.0", features = ["chrono"] }
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.1.2", features = ["serde"]}
+chrono = { version = "0.4.22", features = ["serde"] }
+iobase = {path = "../iobase"}
+zisraw = {path = "../zisraw"}

@@ -1,4 +1,7 @@
+mod error;
+
 use std::borrow::Borrow;
+use chrono::{DateTime, Local};
 use std::fs::File;
 use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
@@ -6,12 +9,10 @@ use std::sync::Arc;
 use rusqlite::Connection;
 use uuid::Uuid;
 use uuid;
-use crate::db::RegisterSuccess::{FileExists, ImageExists, Inserted};
-use crate::io::zisraw;
-use crate::io::zisraw::{structs, ZisrawInterface};
-use crate::utils::XmlUtil;
-use crate::{Result,ImageInfo};
-use crate::Error::Own;
+use zisraw::utils::XmlUtil;
+use zisraw::ZisrawInterface;
+pub use error::{Error,Result};
+use serde::{Deserialize, Serialize};
 
 
 const IMAGE_TABLE_CREATE: &'static str =
@@ -44,16 +45,26 @@ pub struct DB {
 	conn:Connection
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ImageInfo{
+	pub timestamp:DateTime<Local>,
+	pub guid:Uuid,
+	pub parent_guid:Option<Uuid>,
+	pub orig_path:PathBuf,
+	pub file_part:i32,
+	pub filenames:Vec<PathBuf>
+}
+
 fn guid_from_string(s:String)->Result<Uuid>{
 	Uuid::parse_str(s.as_str())
-		.or_else(|e|Err(Own(format!("Failed to parse {s} as uuid ({e})"))))
+		.or_else(|e|Err(Error::Own(format!("Failed to parse {s} as uuid ({e})"))))
 }
 
 fn guid_from_maybe_string(s:Option<String>)->Result<Option<Uuid>>{
 	s.clone()
 		.map(|x:String|Uuid::parse_str(x.as_str()))
 		.transpose()
-		.or_else(|e|Err(Own(format!("Failed to parse {} as uuid ({e})",s.unwrap()))))
+		.or_else(|e|Err(Error::Own(format!("Failed to parse {} as uuid ({e})",s.unwrap()))))
 }
 
 impl DB {
@@ -65,7 +76,7 @@ impl DB {
 		self.conn.prepare("SELECT filename FROM files WHERE filename=?")?
 			.exists([filename.to_str().unwrap()])
 	}
-	fn register_image(&self, hd:&structs::FileHeader, file:&Arc<dyn FileExt>) -> Result<RegisterSuccess>{
+	fn register_image(&self, hd:&zisraw::structs::FileHeader, file:&Arc<dyn FileExt>) -> Result<RegisterSuccess>{
 		if !self.has_image(&hd.FileGuid)?
 		{ // image is not yet known, register it
 			let mut metadata = hd.get_metadata(file)?;
@@ -104,10 +115,10 @@ impl DB {
 					thumbnail_type,thumbnail_data
 				)
 			)?;
-			Ok(Inserted)
+			Ok(RegisterSuccess::Inserted)
 		} else {//image is already registered but filename is new
 			let existing = self.lookup_filenames(&hd.FileGuid)?;
-			Ok(ImageExists(existing))
+			Ok(RegisterSuccess::ImageExists(existing))
 		}
 	}
 	pub fn query_images(&self,where_clause:Option<String>) -> Result<Vec<ImageInfo>>
@@ -147,7 +158,7 @@ impl DB {
 	}
 	pub fn register_file(&self, filename:&PathBuf) -> Result<RegisterSuccess>{
 		if self.has_file(&filename)?{
-			return Ok(FileExists);//file is already registered
+			return Ok(RegisterSuccess::FileExists);//file is already registered
 		}
 		let file:Arc<dyn FileExt> = Arc::new(File::open(filename.clone())?);
 		let hd = zisraw::get_file_header(&file)?;

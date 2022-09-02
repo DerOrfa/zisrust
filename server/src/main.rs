@@ -13,8 +13,7 @@ use argh::FromArgs;
 use axum::extract::Path;
 use axum::response::Response;
 use uuid::Uuid;
-use zisrust::db::{DB, RegisterSuccess};
-use zisrust::ImageInfo;
+use db::{DB, RegisterSuccess};
 
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(description = "sqlite backed registry for czi files")]

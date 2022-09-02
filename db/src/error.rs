@@ -1,23 +1,6 @@
-pub mod utils;
-pub mod pyramid;
-pub mod db;
-
-use std::fmt::{Debug, Formatter};
-use std::path::PathBuf;
-use chrono::{DateTime, Local};
-use uuid::Uuid;
-use serde::{Deserialize, Serialize, ser::Serializer,ser::SerializeStruct};
-
-#[derive(Serialize, Deserialize)]
-pub struct ImageInfo{
-	pub timestamp:DateTime<Local>,
-	pub guid:Uuid,
-	pub parent_guid:Option<Uuid>,
-	pub orig_path:PathBuf,
-	pub file_part:i32,
-	pub filenames:Vec<PathBuf>
-}
-
+use std::fmt::Formatter;
+use serde::Serialize;
+use serde::ser::{Serializer,SerializeStruct};
 
 #[derive(Debug)]
 pub enum Error {
@@ -30,19 +13,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl From<rusqlite::Error> for Error{
 	fn from(e: rusqlite::Error) -> Self {Error::Sqlite(e)}
 }
+impl From<iobase::Error> for Error{
+	fn from(e: iobase::Error) -> Self {
+		match e {
+			iobase::Error::Io(e) => Error::Io(e),
+			iobase::Error::Own(e) => Error::Own(e)
+		}
+	}
+}
 impl From<std::io::Error> for Error{
 	fn from(e: std::io::Error) -> Self {Error::Io(e)}
 }
 impl From<&str> for Error{
-	fn from(e: &str) -> Self {Error::Own(e.to_string())}
+	fn from(e: &str) -> Self {iobase::Error::from(e).into()}
 }
 
 impl std::fmt::Display for Error{
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Error::Io(e) => std::fmt::Display::fmt(e,f),
-			Error::Sqlite(e) => std::fmt::Display::fmt(e,f),
-			Error::Own(e) => std::fmt::Display::fmt(e,f)
+			Error::Own(e) => std::fmt::Display::fmt(e,f),
+			Error::Sqlite(e) => std::fmt::Display::fmt(e,f)
 		}
 	}
 }
@@ -51,8 +42,8 @@ impl std::error::Error for Error {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		match self {
 			Error::Io(e) => e.source(),
-			Error::Sqlite(e) => e.source(),
-			Error::Own(_) => None
+			Error::Own(_) => None,
+			Error::Sqlite(e) => e.source()
 		}
 	}
 }
@@ -74,5 +65,4 @@ impl Serialize for Error {
 		s.end()
 	}
 }
-
 

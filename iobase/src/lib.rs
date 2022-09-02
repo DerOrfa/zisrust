@@ -1,11 +1,10 @@
 use std::fmt::Formatter;
-use std::io::Read;
 use basic::Cached;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 
-mod basic;
-mod blockbuf;
+pub mod basic;
+pub mod blockbuf;
 
 #[derive(Debug,Clone)]
 pub enum Endian{Big,Little}

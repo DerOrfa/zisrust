@@ -5,14 +5,14 @@ use std::collections::HashMap;
 use std::iter::Iterator;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
-use crate::utils::XmlUtil;
 use uom::si::{f64::Length,length::meter};
-use crate::io::zisraw::structs::Attachment;
-use crate::{Error, Result};
+use iobase::{Error, Result};
 
-mod r#impl;
 pub mod structs;
+pub mod utils;
 mod segment;
+
+use utils::XmlUtil;
 
 pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<structs::FileHeader>{
 	let s = segment::Segment::new(file, 0)?;
@@ -28,6 +28,7 @@ pub struct Scene{
 	pub PyramidLayersCount:usize,
 	pub MinificationFactor:i32
 }
+
 #[derive(Debug)]
 pub struct ImageInfo{
 	pub pixels:(u64,u64,u64),
@@ -95,7 +96,7 @@ pub trait ZisrawInterface{
 		}
 		Ok(info)
 	}
-	fn get_thumbnail(&self, file:&Arc<dyn FileExt>) -> Result<Option<Attachment>>{
+	fn get_thumbnail(&self, file:&Arc<dyn FileExt>) -> Result<Option<structs::Attachment>>{
 		let thumbnail = self.get_attachments(file)?
 			.into_iter()
 			.filter(|a|a.Name=="Thumbnail")
