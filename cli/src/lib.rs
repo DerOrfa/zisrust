@@ -7,6 +7,7 @@ use db::{DB, RegisterSuccess};
 use zisraw::ZisrawInterface;
 use zisraw::utils::XmlUtil;
 use prettytable::{row, Table};
+use uuid::Uuid;
 
 pub fn register(database: &DB, fname: &PathBuf) -> Result<(), Box<dyn Error>> {
 	match database.register_file(&fname)? {
@@ -41,8 +42,8 @@ pub fn query(database: DB, where_clause: Option<String>, json:bool) -> Result<()
 	Ok(())
 }
 
-pub fn dump(fname:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>> {
-	let file:Arc<dyn FileExt> = Arc::new(File::open(fname.clone())?);
+pub fn dump(name:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>> {
+	let file:Arc<dyn FileExt> = Arc::new(File::open(name)?);
 	let hd = zisraw::get_file_header(&file)?;
 	println!("{hd:#?}");
 

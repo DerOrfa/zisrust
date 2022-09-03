@@ -1,7 +1,8 @@
-use std::error::Error;
+use db::Error;
 use std::path::PathBuf;
 use argh::FromArgs;
 use db::DB;
+use db::Error::Own;
 
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(description = "sqlite backed registry for czi files")]
@@ -48,14 +49,14 @@ struct Query {
 #[argh(subcommand, name = "dump")]
 struct Dump {
 	#[argh(positional)]
-	/// czi files to "dump"
-	file:PathBuf,
-	/// an optional file to write the xmal data to
+	/// czi file to "dump" either in filename or guid
+	file:String,
+	/// an optional file to write the xml data to
 	#[argh(option,short='x')]
 	xmlfile:Option<PathBuf>
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let cli: Cli = argh::from_env();
 	let database = DB::new(&cli.dbfile)?;
@@ -67,7 +68,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 			}
 		}
 		Commands::Query(l) => cli::query(database, l.where_clause, l.json)?,
-		Commands::Dump(d)  => cli::dump(d.file, d.xmlfile )?
+		Commands::Dump(d)  => {
+			let fname = match uuid::Uuid::parse_str(d.file.as_str()).ok(){
+				None => d.file.into(),
+				Some(uuid) => database
+					.query_images(Some(format!("guid = \"{uuid}\"")))?.first()
+					.ok_or(Own(format!("Image with guid \"{uuid}\" not found in \"{}\"",cli.dbfile.to_string_lossy())))?
+					.filenames.iter()
+					.find_map(|f|f.exists().then_some(f))
+					.ok_or(Own(format!("None of the files registered with guid \"{uuid}\" could be found or accessed")))?
+					.clone()
+			};
+
+			cli::dump(fname, d.xmlfile )?
+		}
 	}
 	Ok(())
 }
