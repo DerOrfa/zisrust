@@ -1,7 +1,7 @@
 mod error;
 
 use std::borrow::Borrow;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, TimeZone};
 use std::fs::File;
 use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
@@ -91,7 +91,7 @@ impl DB {
 			let image_branch = metadata_tree
 				.take_child("Information").unwrap()
 				.take_child("Image").unwrap();
-			let acquisition_timestamp: chrono::DateTime<chrono::Local> =
+			let acquisition_timestamp: DateTime<Local> =
 				image_branch.child_into("AcquisitionDateAndTime")?;
 
 			let org_filename =
@@ -115,7 +115,7 @@ impl DB {
 					hd.FileGuid.to_string(),
 					primary_file_guid,
 					hd.FilePart,
-					acquisition_timestamp,
+					acquisition_timestamp.timestamp(), // decode with SELECT datetime(acquisition_timestamp, 'unixepoch')
 					org_filename,
 					metadata.cache.source,
 					thumbnail_type,thumbnail_data
@@ -148,7 +148,7 @@ impl DB {
 		let rows = stmt.query_map([],|r| {
 			let guid = guid_from_string(r.get(0)?).unwrap_or_default();
 			Ok(ImageInfo {
-				timestamp: r.get(3)?,
+				timestamp: Local.timestamp(r.get(3)?,0),
 				guid,
 				parent_guid: guid_from_maybe_string(r.get(1)?).unwrap_or_default(),
 				orig_path: r.get(4).and_then(|v: String| Ok(PathBuf::from(v)))?,
