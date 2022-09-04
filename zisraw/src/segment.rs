@@ -2,15 +2,14 @@ use iobase::blockbuf::{BlockBuf, BlockRead};
 use std::sync::Arc;
 use std::os::unix::fs::FileExt;
 use iobase::Endian::Little;
-use crate::{Result, Error::Own, Error};
+use crate::Result;
 use super::structs::*;
 use uuid::Uuid;
 use xmltree::Element;
 use iobase::{basic::Cached,DataFromFile};
 
 pub fn parse_xml(source:&String) ->Result<Element>{
-	Element::parse(source.as_bytes())
-		.or_else(|e|Err(Own(format!("Error when parsing xml ({e})"))))
+	Element::parse(source.as_bytes()).or_else(|e|Err(e.into()))
 }
 
 #[derive(Debug)]
@@ -71,7 +70,7 @@ pub enum SegmentBlock{
 	DELETED
 }
 
-impl BlockRead<Error> for FileHeader{
+impl BlockRead for FileHeader{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		let version = buffer.get_array();
 		buffer.skip_to(16)?;
@@ -88,7 +87,7 @@ impl BlockRead<Error> for FileHeader{
 	}
 }
 
-impl BlockRead<Error> for Metadata{
+impl BlockRead for Metadata{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		let xml_size:i32= buffer.get_scalar();
 		let xml_string=buffer.skip_to(256)?.get_utf8(xml_size as usize)?;
@@ -98,7 +97,7 @@ impl BlockRead<Error> for Metadata{
 	}
 }
 
-impl BlockRead<Error> for SubBlock{
+impl BlockRead for SubBlock{
 	fn read(buffer:&mut BlockBuf) -> Result<Self> {
 		let metadata_size:u32 = buffer.get_scalar();
 		let attachment_size:u32= buffer.get_scalar();
@@ -121,7 +120,7 @@ impl BlockRead<Error> for SubBlock{
 	}
 }
 
-impl BlockRead<Error> for DimensionEntryDV1{
+impl BlockRead for DimensionEntryDV1{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		Ok(DimensionEntryDV1{
 			Dimension: buffer.get_ascii::<4>(),
@@ -133,7 +132,7 @@ impl BlockRead<Error> for DimensionEntryDV1{
 	}
 }
 
-impl BlockRead<Error> for DirectoryEntryDV{
+impl BlockRead for DirectoryEntryDV{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> where Self: Sized {
 		let SchemaType= buffer.get_ascii::<2>();
 		let PixelType = buffer.get_scalar();
@@ -151,7 +150,7 @@ impl BlockRead<Error> for DirectoryEntryDV{
 	}
 }
 
-impl BlockRead<Error> for Directory{
+impl BlockRead for Directory{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> where Self: Sized {
 		let EntryCount:i32 = buffer.get_scalar();
 		Ok(Directory{
@@ -161,7 +160,7 @@ impl BlockRead<Error> for Directory{
 }
 
 
-impl BlockRead<Error> for Attachment{
+impl BlockRead for Attachment{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		let data_size:u32 = buffer.get_scalar();
 		Ok(Attachment{
@@ -170,7 +169,7 @@ impl BlockRead<Error> for Attachment{
 		})
 	}
 }
-impl BlockRead<Error> for AttachmentEntryA1{
+impl BlockRead for AttachmentEntryA1{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> {
 		let SchemaType = buffer.get_ascii::<2>();
 		buffer.skip_to(12).expect("Unexpected backward skip");
@@ -185,7 +184,7 @@ impl BlockRead<Error> for AttachmentEntryA1{
 		})
 	}
 }
-impl BlockRead<Error> for AttachmentDirectory{
+impl BlockRead for AttachmentDirectory{
 	fn read(buffer: &mut BlockBuf) -> Result<Self> where Self: Sized {
 		let count:u32 = buffer.get_scalar();
 		buffer.skip_to(256).expect("Unexpected backward skip");

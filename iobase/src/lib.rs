@@ -1,3 +1,4 @@
+use std::error;
 use std::fmt::Formatter;
 use basic::Cached;
 use std::os::unix::fs::FileExt;
@@ -9,12 +10,7 @@ pub mod blockbuf;
 #[derive(Debug,Clone)]
 pub enum Endian{Big,Little}
 
-#[derive(Debug)]
-pub enum Error {
-    Io(std::io::Error),
-    Own(String)
-}
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
 #[derive(Debug)]
 pub struct DataFromFile{
@@ -34,28 +30,4 @@ impl DataFromFile {
     }
 }
 
-impl From<std::io::Error> for Error{
-    fn from(e: std::io::Error) -> Self {Error::Io(e)}
-}
-impl From<&str> for Error{
-    fn from(e: &str) -> Self {Error::Own(e.to_string())}
-}
-
-impl std::fmt::Display for Error{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Io(e) => std::fmt::Display::fmt(e,f),
-            Error::Own(e) => std::fmt::Display::fmt(e,f)
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Io(e) => e.source(),
-            Error::Own(_) => None
-        }
-    }
-}
 

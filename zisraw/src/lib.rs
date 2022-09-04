@@ -6,7 +6,8 @@ use std::iter::Iterator;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use uom::si::{f64::Length,length::meter};
-use iobase::{Error, Result};
+use iobase::Result;
+use std::io::{Error,ErrorKind::InvalidData};
 
 pub mod structs;
 pub mod utils;
@@ -18,7 +19,7 @@ pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<structs::FileHeader>{
 	let s = segment::Segment::new(file, 0)?;
 	match s.block {
 		segment::SegmentBlock::FileHeader(hd) => Ok(hd),
-		_ => Err(Error::from("Unexpected block when looking for header"))
+		_ => Err(Error::new(InvalidData,"Unexpected block when looking for header").into())
 	}
 }
 
@@ -106,7 +107,7 @@ pub trait ZisrawInterface{
 			let att = segment::Segment::new(file,thumbnail.unwrap().FilePosition)?;
 			let att= match att.block{
 				segment::SegmentBlock::Attachment(a) => a,
-				_ => return Err(Error::from("Unexpected block when looking for attachment"))
+				_ => return Err(Error::new(InvalidData,"Unexpected block when looking for attachment").into())
 			};
 			Ok(Some(att))
 		} else {Ok(None)}

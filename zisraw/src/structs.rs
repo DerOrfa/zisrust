@@ -3,11 +3,12 @@
 use uuid::Uuid;
 use iobase::DataFromFile;
 use xmltree;
-use crate::{Error, Result, Error::Own};
+use crate::Result;
 use super::ZisrawInterface;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use super::segment::{Segment,SegmentBlock};
+use std::io::{Error,ErrorKind::InvalidData};
 
 
 #[derive(Debug)]
@@ -137,7 +138,7 @@ impl ZisrawInterface for FileHeader{
 		if let SegmentBlock::Metadata(d) = s.block {
 			Ok(d)
 		} else {
-			Err(Error::from("Unexpected block when looking for metadata"))
+			Err(std::io::Error::new(std::io::ErrorKind::InvalidData,"Unexpected block when looking for metadata").into())
 		}
 	}
 	fn get_directory(&self,file:&Arc<dyn FileExt>) -> Result<Directory>{
@@ -145,16 +146,15 @@ impl ZisrawInterface for FileHeader{
 		if let SegmentBlock::Directory(d) = s.block {
 			Ok(d)
 		} else {
-			Err(Error::from("Unexpected block when looking for directory"))
+			Err(Error::new(InvalidData,"Unexpected block when looking for directory").into())
 		}
 	}
 	fn get_attachments(&self,file:&Arc<dyn FileExt>)-> Result<Vec<AttachmentEntryA1>>{
 		let s:Segment = Segment::new(file, self.AttachmentDirectoryPosition)?;
-		let attachments= match s.block {
-			SegmentBlock::AttachmentDirectory(d) => Ok(d),
-			_ => Err(Error::from("Unexpected block when looking for attachments"))
-		}?;
-		Ok(attachments.Entries)
+		match s.block {
+			SegmentBlock::AttachmentDirectory(d) => Ok(d.Entries),
+			_ => Err(Error::new(InvalidData,"Unexpected block when looking for attachments").into())
+		}
 	}
 }
 
@@ -163,8 +163,8 @@ impl Metadata {
 		match self.cache.get(){
 			Ok(elm) => elm // if the producer produced the data
 				.get_child("Metadata").cloned()// get the child, maybe
-				.ok_or(Error::from("\"Metadata\" missing in xml stream")), //if not return error
-			Err(e) => Err(Own(format!("error when parsing xml data ({})",e)))
+				.ok_or(std::io::Error::new(std::io::ErrorKind::InvalidData,"\"Metadata\" missing in xml stream").into()), //if not return error
+			Err(e) => Err(e.into())
 		}
 	}
 }

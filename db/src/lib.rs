@@ -11,9 +11,9 @@ use uuid::Uuid;
 use uuid;
 use zisraw::utils::XmlUtil;
 use zisraw::ZisrawInterface;
-pub use error::{Error,Result};
 use serde::{Deserialize, Serialize};
-
+pub use error::Error;
+pub use iobase::Result;
 
 const IMAGE_TABLE_CREATE: &'static str =
 	r#"create table if not exists images (
@@ -57,14 +57,19 @@ pub struct ImageInfo{
 
 fn guid_from_string(s:String)->Result<Uuid>{
 	Uuid::parse_str(s.as_str())
-		.or_else(|e|Err(Error::Own(format!("Failed to parse {s} as uuid ({e})"))))
+		.or_else(|e|Err(Error::Because((e.into(),format!("Failed to parse {s} as uuid)"))).into()))
 }
 
 fn guid_from_maybe_string(s:Option<String>)->Result<Option<Uuid>>{
 	s.clone()
 		.map(|x:String|Uuid::parse_str(x.as_str()))
 		.transpose()
-		.or_else(|e|Err(Error::Own(format!("Failed to parse {} as uuid ({e})",s.unwrap()))))
+		.or_else(
+			|e|Err(Error::Because((
+				e.into(),
+				format!("Failed to parse {} as uuid)",s.unwrap())
+			)).into())
+		)
 }
 
 impl DB {
