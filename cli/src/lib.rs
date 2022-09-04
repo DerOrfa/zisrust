@@ -65,11 +65,16 @@ pub fn dump(name:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>>
 			image_branch.child_into("AcquisitionDateAndTime")?;
 		println!("acquisition time: {acquisition_timestamp}");
 
-		let org_filename =
-			metadata_tree.drill_down(&["Experiment", "ImageName"])?
-				.get_text().ok_or(iobase::Error::from("failed get original filename from metadata"))?;
-		println!("original filename: {org_filename}");
-
+		let found_filename = metadata_tree
+				.drill_down(&["Experiment", "ImageName"])?
+				.get_text();
+		match found_filename {
+			None => return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				"failed get original filename from metadata"
+			).into()),
+			Some(f) => println!("original filename: {f}")
+		}
 	} else {
 		println!("{}",metadata_tree.unwrap_err());
 		if xmlfile.is_none() {

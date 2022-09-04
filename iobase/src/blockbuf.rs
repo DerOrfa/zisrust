@@ -5,8 +5,6 @@ use std::mem::size_of;
 use std::fmt::{Debug, Formatter};
 use std::vec::Drain;
 use bytemuck::Pod;
-use crate::Error::Own;
-use crate::Error;
 use crate::basic::ByteSwapper;
 
 pub struct BlockBuf{
@@ -67,7 +65,7 @@ impl BlockBuf {
 	/// - trying to skip to a position that was already drained will return an error and has no other effect
 	pub fn skip_to(&mut self,newpos:u64) -> Result<&mut BlockBuf>{
 		if newpos < self.drained as u64{
-			Err(Error::from("Cannot skip backwards"))
+			Err(std::io::Error::new(std::io::ErrorKind::Other,"Cannot skip backwards").into())
 		} else {
 			self.drain((newpos as usize - self.drained) as usize);
 			Ok(self)
@@ -151,7 +149,7 @@ impl BlockBuf {
 	pub fn get_utf8(&mut self, len:usize) -> Result<String>{
 		let bytes:Vec<u8> = self.drain(len).collect();
 		String::from_utf8(bytes)
-			.or_else(|e|Err(Own(format!("Failed to read {len} bytes as utf8-string ({})",e))))
+			.or_else(|e|Err(e.into()))
 	}
 	/// Drain given amount of bytes and try to interpret them as cstring.
 	///
@@ -169,7 +167,7 @@ impl BlockBuf {
 	///
 	/// T::read is run with a spliced off buffer.
 	/// Because of that T::read will see a buffer with no drained bytes that starts from the current position.
-	pub fn read<T,E>(&mut self) -> std::result::Result<T,E> where E:std::error::Error, T:BlockRead<E>
+	pub fn read<T>(&mut self) -> Result<T> where T:BlockRead
 	{
 		let mut local = self.splice_unlimited();
 		let ret=T::read(&mut local);
@@ -178,14 +176,14 @@ impl BlockBuf {
 		ret
 	}
 	/// create a vector of objects by reading all remaining data from the buffer
-	pub fn read_vec<T,E>(&mut self,len:usize) -> std::result::Result<Vec<T>,E> where E:std::error::Error, T:BlockRead<E>
+	pub fn read_vec<T>(&mut self,len:usize) -> Result<Vec<T>> where T:BlockRead
 	{
 		std::iter::from_fn(||Some(self.read())).take(len).collect()
 	}
 }
 
-pub trait BlockRead<E:std::error::Error>{
-	fn read(buffer:&mut BlockBuf) -> std::result::Result<Self,E> where Self:Sized;
+pub trait BlockRead{
+	fn read(buffer:&mut BlockBuf) -> Result<Self> where Self:Sized;
 }
 
 impl Debug for BlockBuf{

@@ -7,13 +7,14 @@ use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use rusqlite::Connection;
+use rusqlite::types::FromSql;
 use uuid::Uuid;
 use uuid;
 use zisraw::utils::XmlUtil;
 use zisraw::ZisrawInterface;
-pub use error::{Error,Result};
 use serde::{Deserialize, Serialize};
-
+pub use error::Error;
+pub use iobase::Result;
 
 const IMAGE_TABLE_CREATE: &'static str =
 	r#"create table if not exists images (
@@ -57,14 +58,19 @@ pub struct ImageInfo{
 
 fn guid_from_string(s:String)->Result<Uuid>{
 	Uuid::parse_str(s.as_str())
-		.or_else(|e|Err(Error::Own(format!("Failed to parse {s} as uuid ({e})"))))
+		.or_else(|e|Err(Error::Because((e.into(),format!("Failed to parse {s} as uuid)"))).into()))
 }
 
 fn guid_from_maybe_string(s:Option<String>)->Result<Option<Uuid>>{
 	s.clone()
 		.map(|x:String|Uuid::parse_str(x.as_str()))
 		.transpose()
-		.or_else(|e|Err(Error::Own(format!("Failed to parse {} as uuid ({e})",s.unwrap()))))
+		.or_else(
+			|e|Err(Error::Because((
+				e.into(),
+				format!("Failed to parse {} as uuid)",s.unwrap())
+			)).into())
+		)
 }
 
 impl DB {
@@ -121,8 +127,18 @@ impl DB {
 			Ok(RegisterSuccess::ImageExists(existing))
 		}
 	}
-	pub fn query_images(&self,where_clause:Option<String>) -> Result<Vec<ImageInfo>>
-	{
+	pub fn query_from_images<T:FromSql,O:Into<Option<String>>>(&self, column:&str, where_clause:O) -> Result<Vec<T>>{
+		let where_clause:Option<String> = where_clause.into();
+		let query = match where_clause{
+			None => format!("SELECT {column} FROM images"),
+			Some(c) => format!("SELECT {column} FROM images WHERE {}",c)
+		};
+		let mut stmt= self.conn.prepare(query.as_str())?;
+		let rows = stmt.query_map([],|r| {r.get::<usize,T>(0)})?;
+		Ok(rows.filter_map(|r|r.ok()).collect())
+	}
+	pub fn query_images<O:Into<Option<String>>>(&self,where_clause:O) -> Result<Vec<ImageInfo>>{
+		let where_clause:Option<String> = where_clause.into();
 		let query = match where_clause{
 			None => "SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images".to_string(),
 			Some(c) => format!("SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images WHERE {}",c)
@@ -141,6 +157,18 @@ impl DB {
 			})
 		})?;
 		Ok(rows.filter_map(|r|r.ok()).collect())
+	}
+	pub fn get_image(&self,id:Uuid)-> Result<Option<ImageInfo>>{
+		let found = self.query_images(format!("guid = \"{id}\""));
+		found.map(|mut v|v.pop())
+	}
+	pub fn get_image_thumbnail(&self,id:Uuid)-> Result<Option<Vec<u8>>>{
+		let found = self.query_from_images("thumbnail", format!("guid = \"{id}\""));
+		found.map(|mut v|v.pop())
+	}
+	pub fn get_image_xml(&self,id:Uuid)-> Result<Option<String>>{
+		let found = self.query_from_images("meta_data", format!("guid = \"{id}\""));
+		found.map(|mut v|v.pop())
 	}
 	pub fn new(filename:&PathBuf) -> rusqlite::Result<Self> {
 		let slf=Self{

@@ -1,7 +1,8 @@
 use xmltree::{Element,ElementPredicate};
 use std::fmt::Debug;
+use std::io::ErrorKind::InvalidData;
+use std::io::Error;
 use std::str::FromStr;
-use crate::Error::Own;
 use crate::Result;
 
 pub trait XmlUtil {
@@ -16,15 +17,17 @@ impl XmlUtil for Element{
 	fn into<T>(&self) -> Result<T> where T:FromStr{
 		let text = self
 			.get_text()
-			.ok_or(Own(format!("Failed to read element {} as text",self.name)))?;
+			.ok_or(Error::new(InvalidData,format!("Failed to read element {} as text",self.name)))?;
 		T::from_str(text.as_ref())
-			.or(Err(Own(format!("Failed to parse elements {} text {}",self.name,text))))
+			.or(
+				Err(Error::new(InvalidData,format!("Failed to parse elements {} text {}",self.name,text)).into())
+			)
 	}
 	fn child_into<T, P>(&self, name: P) -> Result<T> where T: FromStr, P:Debug+ElementPredicate+Clone
 	{
 		match self.get_child(name.clone()){
 			Some(cld) => XmlUtil::into(cld),
-			None => Err(Own(format!("Failed to access child {:?} of {} as text",name,self.name)))
+			None => Err(Error::new(InvalidData,format!("Failed to access child {:?} of {} as text",name,self.name)).into())
 		}
 
 	}
@@ -39,21 +42,18 @@ impl XmlUtil for Element{
 		for e in chld {
 			let value:T = e.child_into("Value")?;
 			let id=e.attributes.get(attr)
-				.ok_or(Own(format!("attribute {} missing in {}",attr,e.name)))?;
+				.ok_or(Error::new(InvalidData,format!("attribute {} missing in {}",attr,e.name)))?;
 			ret.insert(id.clone(),value);
 		}
-		if ret.is_empty(){Err(Own(format!("no values found")))}
+		if ret.is_empty(){Err(Error::new(InvalidData,format!("no values found")).into())}
 		else {Ok(ret)}
 	}
 
 	fn drill_down(&self, children: &[&str]) -> Result<&Element> {
 		let childrens= children.len();
-		self.get_child(children[0])
-			.ok_or(Own(format!("Failed to walk down the element chain at {:?}=>{:?}",children[0],&children[1..])))
-			.and_then(|child|
-				if childrens==1 {Ok(child)}
-				else {child.drill_down(&children[1..])}
-			)
-
+		let child=self.get_child(children[0])
+			.ok_or(Error::new(InvalidData,format!("Failed to walk down the element chain at {:?}=>{:?}",children[0],&children[1..])))?;
+		if childrens==1 {Ok(child)}
+		else {child.drill_down(&children[1..])}
 	}
 }
