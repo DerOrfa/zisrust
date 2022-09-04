@@ -13,7 +13,7 @@ use argh::FromArgs;
 use axum::extract::Path;
 use axum::response::Response;
 use uuid::Uuid;
-use db::{DB, RegisterSuccess};
+use db::{DB, ImageInfo, RegisterSuccess};
 
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(description = "sqlite backed registry for czi files")]
@@ -44,6 +44,7 @@ async fn main() {
 		// `POST /users` goes to `create_user`
 		.route("/images", get(get_images))
 		.route("/images", post(register_image))
+		.route("/images/:uuid", get(get_image))
 		.route("/images/:uuid/xml", get(get_image_xml))
 		.route("/images/:uuid/thumbnail", get(get_image_thumbnail))
 		.layer(Extension(state))
@@ -64,53 +65,54 @@ async fn root() -> &'static str {
 	"Hello, World!"
 }
 
-async fn get_images(Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+async fn get_images(Extension(db): Extension<Arc<Mutex<DB>>>) -> Result<Json<Vec<ImageInfo>>,StatusCode> {
 	match db.lock().unwrap().query_images(None){
-		Ok(images) => (StatusCode::OK,Json(images)).into_response(),
-		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,Json(e)).into_response()
+		Ok(images) => Ok(Json(images)),
+		Err(e) => Err(StatusCode::INTERNAL_SERVER_ERROR)
 	}
 }
 
-async fn get_image(Path(id):Path<Uuid>, Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
-	match db.lock().unwrap().query_images(Some(format!("guid==\"{id}\""))){
-		Ok(images) => {
-			match images.first() {
-				None => (StatusCode::NOT_FOUND).into_response(),
-				Some(image) => (StatusCode::INTERNAL_SERVER_ERROR,Json(image)).into_response()
-			}
-		},
-		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,Json(e)).into_response()
-	}
+async fn get_image(Path(id):Path<Uuid>, Extension(db): Extension<Arc<Mutex<DB>>>) -> Result<Json<ImageInfo>,StatusCode> {
+	let image = db.lock().unwrap().get_image(id)
+		.or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
+		.ok_or(StatusCode::NOT_FOUND)?;
+	Ok(Json(image))
 }
 
 #[derive(Deserialize)]
 struct RegisterImagePayload{filename:PathBuf}
-async fn register_image(Json(payload):Json<RegisterImagePayload>, Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
+async fn register_image(Json(payload):Json<RegisterImagePayload>, Extension(db): Extension<Arc<Mutex<DB>>>) -> Result<Response,StatusCode> {
 	if ! payload.filename.exists(){
-		return StatusCode::NOT_FOUND.into_response();
+		return Err(StatusCode::NOT_FOUND);
 	}
 	if ! payload.filename.is_file(){
-		return StatusCode::NOT_ACCEPTABLE.into_response()
+		return Err(StatusCode::NOT_ACCEPTABLE)
 	}
 	// todo handle missing read access
 	match db.lock().unwrap().register_file(&payload.filename){
 		Ok(r) => {
 			match r {
-				RegisterSuccess::Inserted => StatusCode::CREATED.into_response(),
-				RegisterSuccess::ImageExists(e) => (StatusCode::ACCEPTED,Json(e)).into_response(),
-				RegisterSuccess::FileExists => StatusCode::ALREADY_REPORTED.into_response()
+				RegisterSuccess::Inserted => Ok(StatusCode::CREATED.into_response()),
+				RegisterSuccess::ImageExists(e) => Ok((StatusCode::ACCEPTED,Json(e)).into_response()),
+				RegisterSuccess::FileExists => Ok(StatusCode::ALREADY_REPORTED.into_response())
 			}
 
 		}
-		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,Json(e)).into_response()
+		Err(e) => Err(StatusCode::INTERNAL_SERVER_ERROR)
 	}
 }
 
 
-async fn get_image_xml(Path(id):Path<Uuid>,Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
-	todo!()
+async fn get_image_xml(Path(id):Path<Uuid>,Extension(db): Extension<Arc<Mutex<DB>>>) -> Result<Response,StatusCode> {
+	let xml=db.lock().unwrap()
+		.get_image_xml(id).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
+		.ok_or(StatusCode::NOT_FOUND)?;
+	Ok((axum::TypedHeader(axum::headers::ContentType::xml()),xml).into_response())
 }
 
-async fn get_image_thumbnail(Path(id):Path<Uuid>,Extension(db): Extension<Arc<Mutex<DB>>>) -> Response {
-	todo!()
+async fn get_image_thumbnail(Path(id):Path<Uuid>,Extension(db): Extension<Arc<Mutex<DB>>>) -> Result<Response,StatusCode> {
+	let image=db.lock().unwrap()
+		.get_image_thumbnail(id).or(Err(StatusCode::INTERNAL_SERVER_ERROR))?
+		.ok_or(StatusCode::NOT_FOUND)?;
+	Ok((axum::TypedHeader(axum::headers::ContentType::jpeg()),image).into_response())
 }

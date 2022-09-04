@@ -7,7 +7,6 @@ use db::{DB, RegisterSuccess};
 use zisraw::ZisrawInterface;
 use zisraw::utils::XmlUtil;
 use prettytable::{row, Table};
-use uuid::Uuid;
 
 pub fn register(database: &DB, fname: &PathBuf) -> Result<(), Box<dyn Error>> {
 	match database.register_file(&fname)? {

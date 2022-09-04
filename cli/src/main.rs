@@ -1,4 +1,3 @@
-use db::Error;
 use std::path::PathBuf;
 use argh::FromArgs;
 use db::DB;
@@ -72,8 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let fname = match uuid::Uuid::parse_str(d.file.as_str()).ok(){
 				None => d.file.into(),
 				Some(uuid) => database
-					.query_images(Some(format!("guid = \"{uuid}\"")))?.first()
-					.ok_or(Own(format!("Image with guid \"{uuid}\" not found in \"{}\"",cli.dbfile.to_string_lossy())))?
+					.get_image(uuid)?.ok_or(Own(format!("Image with guid \"{uuid}\" not found in \"{}\"",cli.dbfile.to_string_lossy())))?
 					.filenames.iter()
 					.find_map(|f|f.exists().then_some(f))
 					.ok_or(Own(format!("None of the files registered with guid \"{uuid}\" could be found or accessed")))?

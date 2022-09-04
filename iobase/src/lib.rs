@@ -1,5 +1,4 @@
 use std::error;
-use std::fmt::Formatter;
 use basic::Cached;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;

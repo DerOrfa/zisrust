@@ -1,6 +1,4 @@
 use std::fmt::{Debug, Formatter};
-use serde::Serialize;
-use serde::ser::{Serializer,SerializeStruct};
 
 #[derive(Debug)]
 pub enum Error {
