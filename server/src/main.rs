@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use argh::FromArgs;
 use axum::extract::Path;
-use axum::response::Response;
+use axum::response::{Redirect, Response};
 use uuid::Uuid;
 use db::{DB, ImageInfo, RegisterSuccess};
 
@@ -23,7 +23,7 @@ struct Cli {
 	dbfile: PathBuf,
 
 	#[argh(option, short='i', default = "SocketAddr::from(([127,0,0,1],3000))")]
-	/// ip adress to listen at
+	/// ip address to listen at
 	address:SocketAddr
 }
 
@@ -39,9 +39,8 @@ async fn main() {
 
 	// build our application with a route
 	let app = Router::new()
-		// `GET /` goes to `root`
-		.route("/", get(root))
-		// `POST /users` goes to `create_user`
+		// `GET / redirects to `images`
+		.route("/", get(|| async { Redirect::permanent("/images") }))
 		.route("/images", get(get_images))
 		.route("/images", post(register_image))
 		.route("/images/:uuid", get(get_image))
@@ -58,11 +57,6 @@ async fn main() {
 		.serve(app.into_make_service())
 		.await
 		.unwrap();
-}
-
-// basic handler that responds with a static string
-async fn root() -> &'static str {
-	"Hello, World!"
 }
 
 async fn get_images(Extension(db): Extension<Arc<Mutex<DB>>>) -> Result<Json<Vec<ImageInfo>>,StatusCode> {

@@ -2,3 +2,6 @@
 members = ["iobase", "zisraw", "db", "cli", "server"]
 exclude = ["pyramid"]
 
+[profile.release]
+strip = true
+lto = true

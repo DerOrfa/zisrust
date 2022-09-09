@@ -7,7 +7,9 @@ use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use uom::si::{f64::Length,length::meter};
 use iobase::Result;
-use std::io::{Error,ErrorKind::InvalidData};
+use std::io::{ErrorKind::InvalidData};
+use std::str::FromStr;
+use chrono::{DateTime, Local, TimeZone};
 
 pub mod structs;
 pub mod utils;
@@ -19,7 +21,7 @@ pub fn get_file_header(file:&Arc<dyn FileExt>) -> Result<structs::FileHeader>{
 	let s = segment::Segment::new(file, 0)?;
 	match s.block {
 		segment::SegmentBlock::FileHeader(hd) => Ok(hd),
-		_ => Err(Error::new(InvalidData,"Unexpected block when looking for header").into())
+		_ => Err(std::io::Error::new(InvalidData,"Unexpected block when looking for header").into())
 	}
 }
 
@@ -35,7 +37,7 @@ pub struct ImageInfo{
 	pub pixels:(u64,u64,u64),
 	pub pixel_size:HashMap<String,Length>,
 	pub pixel_type:String,
-	pub acquisition_timestamp: Option<chrono::DateTime<chrono::Local>>,
+	pub timestamp: DateTime<chrono::Local>,
 	pub acquisition_duration: Option<std::time::Duration>,
 	pub mosaic_tiles:Option<u64>,
 	pub scenes:Vec<Scene>
@@ -50,6 +52,17 @@ pub trait ZisrawInterface{
 		let e = self.get_metadata(file)?;
 		Ok(e.cache.source.clone())
 	}
+	fn get_timestamp(&self,file:&Arc<dyn FileExt>) -> Result<DateTime<Local>>{
+		let meta = self.get_metadata(file)?.as_tree()?;
+		let timestamp = meta //first find an entry with a timestamp and use it as string
+			.drill_down(["Information","Image","AcquisitionDateAndTime"].borrow())
+			.or_else(|_|meta.drill_down(["Information","Document","CreationDate"].borrow()))?
+			.get_text()
+			.ok_or(std::io::Error::new(InvalidData,"No text"))?;
+		let timestamp = DateTime::<Local>::from_str(timestamp.as_ref())
+				.or_else(|_|Local.datetime_from_str(timestamp.as_ref(),"%FT%T"))?;
+		Ok(timestamp)
+	}
 	fn get_image_info(&self,file:&Arc<dyn FileExt>) -> Result<ImageInfo>{
 		let scaling_path=["Scaling","Items"];
 		let mut meta = self.get_metadata(file)?.as_tree()?;
@@ -61,6 +74,7 @@ pub trait ZisrawInterface{
 			.or(image_props.drill_down(&scaling_path));
 
 		let scenes = image_props.drill_down(["Dimensions","S","Scenes"].borrow()).ok();
+
 		let mut info = ImageInfo{
 			pixels:(
 				image_props.child_into("SizeX")?,
@@ -69,7 +83,7 @@ pub trait ZisrawInterface{
 			),
 			pixel_size: Default::default(),
 			pixel_type: image_props.child_into("PixelType")?,
-			acquisition_timestamp: image_props.child_into("AcquisitionDateAndTime").ok(),
+			timestamp: self.get_timestamp(file)?,
 			acquisition_duration: image_props.child_into("AcquisitionDuration")
 				.and_then(|d|Ok(std::time::Duration::from_secs_f32(d))).ok(),
 			mosaic_tiles: image_props.child_into("SizeM").ok(),
@@ -107,12 +121,9 @@ pub trait ZisrawInterface{
 			let att = segment::Segment::new(file,thumbnail.unwrap().FilePosition)?;
 			let att= match att.block{
 				segment::SegmentBlock::Attachment(a) => a,
-				_ => return Err(Error::new(InvalidData,"Unexpected block when looking for attachment").into())
+				_ => return Err(std::io::Error::new(InvalidData,"Unexpected block when looking for attachment").into())
 			};
 			Ok(Some(att))
 		} else {Ok(None)}
-
-
-
 	}
 }

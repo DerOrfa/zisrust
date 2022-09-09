@@ -9,7 +9,8 @@ use zisraw::utils::XmlUtil;
 use prettytable::{row, Table};
 
 pub fn register(database: &DB, fname: &PathBuf) -> Result<(), Box<dyn Error>> {
-	match database.register_file(&fname)? {
+	let fname = fname.canonicalize()?;
+	match database.register_file(fname.as_path())? {
 		RegisterSuccess::Inserted => println!("{} is now registered", fname.to_string_lossy()),
 		RegisterSuccess::ImageExists(v) => println!("image in {} is already registered, known filenames are {v:?}", fname.to_string_lossy()),
 		RegisterSuccess::FileExists => println!("{} is already registered", fname.to_string_lossy())
@@ -56,13 +57,7 @@ pub fn dump(name:PathBuf, xmlfile:Option<PathBuf>) -> Result<(), Box<dyn Error>>
 	let metadata_tree = metadata.as_tree();
 
 	if let Ok(metadata_tree) = metadata_tree {
-		let mut metadata_tree = metadata_tree;
-		let image_branch = metadata_tree
-			.take_child("Information").unwrap()
-			.take_child("Image").unwrap();
-		let acquisition_timestamp: chrono::DateTime<chrono::Local> =
-			image_branch.child_into("AcquisitionDateAndTime")?;
-		println!("acquisition time: {acquisition_timestamp}");
+		println!("timestamp: {}",hd.get_timestamp(&file)?);
 
 		let found_filename = metadata_tree
 				.drill_down(&["Experiment", "ImageName"])?

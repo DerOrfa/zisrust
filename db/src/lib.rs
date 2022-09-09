@@ -4,7 +4,7 @@ use std::borrow::Borrow;
 use chrono::{DateTime, Local, TimeZone};
 use std::fs::File;
 use std::os::unix::fs::FileExt;
-use std::path::PathBuf;
+use std::path::{Path,PathBuf};
 use std::sync::Arc;
 use rusqlite::Connection;
 use rusqlite::types::FromSql;
@@ -21,7 +21,7 @@ const IMAGE_TABLE_CREATE: &'static str =
 		guid CHAR(36) primary key,
 		parent_guid CHAR(36),
 		file_part integer,
-		acquisition_timestamp integer,
+		timestamp integer,
 		original_path string,
 		meta_data string,
 		thumbnail_type string,
@@ -78,7 +78,7 @@ impl DB {
 		self.conn.prepare("SELECT guid FROM images WHERE guid=?")?
 			.exists([guid.to_string()])
 	}
-	fn has_file(&self, filename:&PathBuf) -> rusqlite::Result<bool>{
+	fn has_file(&self, filename:&Path) -> rusqlite::Result<bool>{
 		self.conn.prepare("SELECT filename FROM files WHERE filename=?")?
 			.exists([filename.to_str().unwrap()])
 	}
@@ -86,17 +86,11 @@ impl DB {
 		if !self.has_image(&hd.FileGuid)?
 		{ // image is not yet known, register it
 			let mut metadata = hd.get_metadata(file)?;
-			let mut metadata_tree = metadata.as_tree()?;
+			let metadata_tree = metadata.as_tree()?;
 
-			let image_branch = metadata_tree
-				.take_child("Information").unwrap()
-				.take_child("Image").unwrap();
-			let acquisition_timestamp: DateTime<Local> =
-				image_branch.child_into("AcquisitionDateAndTime")?;
-
-			let org_filename =
-				metadata_tree.drill_down(["Experiment", "ImageName"].borrow())?
-					.get_text().unwrap();
+			let org_filename = metadata_tree
+				.drill_down(["Experiment", "ImageName"].borrow())?
+				.get_text().unwrap();
 			let primary_file_guid = if hd.PrimaryFileGuid == hd.FileGuid { None } else { Some(hd.PrimaryFileGuid.to_string()) };
 
 			let mut thumbnail = hd.get_thumbnail(file)?;
@@ -108,17 +102,17 @@ impl DB {
 
 			self.conn.execute(
 				"\
-				INSERT INTO images (guid, parent_guid, file_part, acquisition_timestamp, original_path, meta_data, thumbnail_type, thumbnail) \
+				INSERT INTO images (guid, parent_guid, file_part, timestamp, original_path, meta_data, thumbnail_type, thumbnail) \
 				values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)\
 			",
 				(
 					hd.FileGuid.to_string(),
 					primary_file_guid,
 					hd.FilePart,
-					acquisition_timestamp.timestamp(), // decode with SELECT datetime(acquisition_timestamp, 'unixepoch')
+					hd.get_timestamp(file)?.timestamp(), // decode with SELECT datetime(acquisition_timestamp, 'unixepoch')
 					org_filename,
 					metadata.cache.source,
-					thumbnail_type,thumbnail_data
+					thumbnail_type, thumbnail_data
 				)
 			)?;
 			Ok(RegisterSuccess::Inserted)
@@ -138,10 +132,10 @@ impl DB {
 		Ok(rows.filter_map(|r|r.ok()).collect())
 	}
 	pub fn query_images<O:Into<Option<String>>>(&self,where_clause:O) -> Result<Vec<ImageInfo>>{
-		let where_clause:Option<String> = where_clause.into();
+		let where_clause:Option<String> = where_clause.into();// e.g. "acquisition_timestamp < strftime('%s','now')"
 		let query = match where_clause{
-			None => "SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images".to_string(),
-			Some(c) => format!("SELECT guid, parent_guid, file_part, acquisition_timestamp, original_path FROM images WHERE {}",c)
+			None => "SELECT guid, parent_guid, file_part, timestamp, original_path FROM images".to_string(),
+			Some(c) => format!("SELECT guid, parent_guid, file_part, timestamp, original_path FROM images WHERE {}",c)
 		};
 		let mut stmt= self.conn.prepare(query.as_str())?;
 		// todo implement proper error handling (right now we simply ignore rows that raised errors
@@ -184,7 +178,7 @@ impl DB {
 				row.get(0).and_then(|v: String| Ok(PathBuf::from(v)))
 			)?.collect()
 	}
-	pub fn register_file(&self, filename:&PathBuf) -> Result<RegisterSuccess>{
+	pub fn register_file(&self, filename:&Path) -> Result<RegisterSuccess>{
 		if self.has_file(&filename)?{
 			return Ok(RegisterSuccess::FileExists);//file is already registered
 		}
